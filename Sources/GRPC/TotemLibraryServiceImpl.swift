@@ -13,7 +13,7 @@ final class TotemLibraryServiceImpl: Totem_V1_TotemLibrary.SimpleServiceProtocol
         request: Totem_V1_TotemLibraryRequest,
         context: GRPCCore.ServerContext
     ) async throws -> Totem_V1_TotemLibraryResponse {
-        database.logger?.info("libraryRequest — owner: \(request.ownerID) totem: \(request.totemID)")
+        database.logger.info(nil, "libraryRequest — owner: \(request.ownerID) totem: \(request.totemID)")
         var groups = database.groups(for: request.ownerID)
         if request.includeAvailable {
             let available = database.availableGroups()
