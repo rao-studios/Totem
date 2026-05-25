@@ -17,6 +17,14 @@ protocol EmbeddingProviding: Actor {
     ) async throws -> (result: [EmbeddingData], usage: Requests.Embedding.Get.Result.Usage)
 }
 
+// MARK: - Backpressure
+
+enum EmbeddingBackpressureError: Error {
+    /// The normal-priority (indexing) waiter queue is at capacity.
+    /// The caller should signal resource exhaustion and retry after backoff.
+    case normalWaiterQueueFull
+}
+
 // MARK: - Concrete provider
 
 /// Provider for managing embedding models with caching and reuse.
@@ -39,6 +47,11 @@ actor EmbeddingModelProvider: EmbeddingProviding {
     /// indexing). This prevents a surge of indexing calls from delaying search.
     private var priorityWaiters: [CheckedContinuation<Void, Never>] = []
     private var normalWaiters: [CheckedContinuation<Void, Never>] = []
+
+    /// Maximum queued normal-priority (indexing) waiters before fast-failing with
+    /// backpressure. Beyond this depth the embedding API is clearly saturated;
+    /// callers should signal resource-exhausted and retry rather than pile on.
+    private let maxNormalWaiters = 50
 
     // MARK: - Concurrency control (preprocessing slots)
 
@@ -83,7 +96,7 @@ actor EmbeddingModelProvider: EmbeddingProviding {
         // Create and register a new task before suspending so any concurrent
         // caller that arrives while we await will find it and join.
         let task = Task<EmbedResult, Error> {
-            await self.acquireSlot(priority: priority)
+            try await self.acquireSlot(priority: priority)
             try Task.checkCancellation()
 
             let outcome: Result<EmbedResult, Error>
@@ -126,17 +139,25 @@ actor EmbeddingModelProvider: EmbeddingProviding {
     // MARK: - Private helpers
 
     /// Acquires a concurrency slot, suspending if all slots are in use.
-    /// Priority callers are appended to the priority queue and woken before
-    /// any normal (indexing) waiters when a slot becomes available.
-    private func acquireSlot(priority: Bool) async {
+    /// Priority callers (search) are appended to the priority queue and woken
+    /// before any normal (indexing) waiters when a slot becomes available.
+    /// Throws `EmbeddingBackpressureError.normalWaiterQueueFull` when the
+    /// normal-priority waiter queue is at capacity, so index requests fail fast
+    /// instead of accumulating unboundedly.
+    private func acquireSlot(priority: Bool) async throws {
         if activeCount < maxConcurrent {
             activeCount += 1
             return
         }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            if priority {
+        if priority {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 priorityWaiters.append(continuation)
-            } else {
+            }
+        } else {
+            guard normalWaiters.count < maxNormalWaiters else {
+                throw EmbeddingBackpressureError.normalWaiterQueueFull
+            }
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 normalWaiters.append(continuation)
             }
         }

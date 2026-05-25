@@ -42,12 +42,29 @@ final class MothershipRequestDispatcher: Sendable {
 
         case .indexRequest(let req):
             logger.info("MothershipRequestDispatcher: [\(tag)] indexRequest — dispatching \(req.items.count) item(s)")
-            guard let r = try? await queryImpl.index(request: req, context: ctx) else {
-                logger.warning("MothershipRequestDispatcher: [\(tag)] indexRequest — dispatch failed")
-                return nil
+            do {
+                let r = try await queryImpl.index(request: req, context: ctx)
+                logger.info("MothershipRequestDispatcher: [\(tag)] indexRequest — done, indexed \(r.indexedCount)")
+                response.payload = .indexResponse(r)
+            } catch EmbeddingBackpressureError.normalWaiterQueueFull {
+                // Embedding queue is saturated — signal backpressure to Seer so it can
+                // retry. Always return a response so Seer's continuation resolves and
+                // the drain loop does not freeze.
+                logger.warning("MothershipRequestDispatcher: [\(tag)] indexRequest — embedding queue full, signalling backpressure")
+                var failResp = Totem_V1_TotemIndexResponse()
+                failResp.success = false
+                failResp.indexedCount = 0
+                response.payload = .indexResponse(failResp)
+            } catch {
+                // Unexpected error — still return a failure response so Seer's
+                // continuation always resolves. Returning nil would leave Seer's
+                // write queue frozen until the session drops.
+                logger.warning("MothershipRequestDispatcher: [\(tag)] indexRequest — dispatch failed: \(error)")
+                var failResp = Totem_V1_TotemIndexResponse()
+                failResp.success = false
+                failResp.indexedCount = 0
+                response.payload = .indexResponse(failResp)
             }
-            logger.info("MothershipRequestDispatcher: [\(tag)] indexRequest — done, indexed \(r.indexedCount)")
-            response.payload = .indexResponse(r)
 
         case .removeRequest(let req):
             logger.info("MothershipRequestDispatcher: [\(tag)] removeRequest — dispatching")
