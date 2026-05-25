@@ -62,8 +62,8 @@ final class TotemQueryServiceImpl: Totem_V1_TotemQuery.SimpleServiceProtocol, Se
         response.results = result.partitionWithScores.map { score, partition in
             var r = Totem_V1_TotemPartitionResult()
             r.totemID = database.nodeId.uuidString
-            r.partitionID = database.totemCID(localId: partition.id)
-            r.documentID = database.totemCID(localId: partition.documentId)
+            r.partitionID = partition.id
+            r.documentID = partition.documentId
             r.ownerID = partition.ownerId
             r.text = partition.text
             r.score = score

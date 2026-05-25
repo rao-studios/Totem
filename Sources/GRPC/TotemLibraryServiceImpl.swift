@@ -15,16 +15,23 @@ final class TotemLibraryServiceImpl: Totem_V1_TotemLibrary.SimpleServiceProtocol
     ) async throws -> Totem_V1_TotemLibraryResponse {
         database.logger.info(nil, "libraryRequest — owner: \(request.ownerID) totem: \(request.totemID)")
 
-        // Fast path: document_ids provided — load owner's groups then filter in-Totem.
-        // Avoids full gRPC library pagination; uses the same groups(for:) path that
-        // already works for list/groups.
+        // Fast path: document_ids provided — use reverse map, no full library scan
         if !request.documentIds.isEmpty {
+            guard let registry = database.registry else {
+                return Totem_V1_TotemLibraryResponse()
+            }
             let requestedIds = Set(request.documentIds)
-            let groups = database.groups(for: request.ownerID).filter { group in
-                group.documents.contains { requestedIds.contains($0.id) }
+            var groupIdSet = Set<String>()
+            for docId in requestedIds {
+                for groupId in registry.documentGroups[docId] ?? [] {
+                    groupIdSet.insert(groupId)
+                }
+            }
+            let matchedGroups = groupIdSet.compactMap {
+                database.buildGroup(groupId: $0, registry: registry)
             }
             var resp = Totem_V1_TotemLibraryResponse()
-            resp.groups = groups.map(toProto)
+            resp.groups = matchedGroups.map(toProto)
             return resp
         }
 
