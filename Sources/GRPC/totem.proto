@@ -173,6 +173,7 @@ message TotemLibraryRequest {
   bool   include_available = 2;
   int32  limit             = 3;  // 0 = no limit (return all)
   string after_id          = 4;  // cursor: return groups with id > after_id (sorted); empty = start
+  string totem_id          = 5;  // UUID of this Totem node; set by Seer for logging/validation
 }
 
 message TotemLibraryResponse {

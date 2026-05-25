@@ -318,6 +318,9 @@ nonisolated struct Totem_V1_TotemLibraryRequest: Sendable {
   /// cursor: return groups with id > after_id (sorted); empty = start
   var afterID: String = String()
 
+  /// UUID of this Totem node; set by Seer for logging/validation
+  var totemID: String = String()
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   init() {}
@@ -1592,7 +1595,7 @@ nonisolated extension Totem_V1_TotemGroup: SwiftProtobuf.Message, SwiftProtobuf.
 
 nonisolated extension Totem_V1_TotemLibraryRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".TotemLibraryRequest"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}include_available\0\u{1}limit\0\u{3}after_id\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}include_available\0\u{1}limit\0\u{3}after_id\0\u{3}totem_id\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1604,6 +1607,7 @@ nonisolated extension Totem_V1_TotemLibraryRequest: SwiftProtobuf.Message, Swift
       case 2: try { try decoder.decodeSingularBoolField(value: &self.includeAvailable) }()
       case 3: try { try decoder.decodeSingularInt32Field(value: &self.limit) }()
       case 4: try { try decoder.decodeSingularStringField(value: &self.afterID) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.totemID) }()
       default: break
       }
     }
@@ -1622,6 +1626,9 @@ nonisolated extension Totem_V1_TotemLibraryRequest: SwiftProtobuf.Message, Swift
     if !self.afterID.isEmpty {
       try visitor.visitSingularStringField(value: self.afterID, fieldNumber: 4)
     }
+    if !self.totemID.isEmpty {
+      try visitor.visitSingularStringField(value: self.totemID, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1630,6 +1637,7 @@ nonisolated extension Totem_V1_TotemLibraryRequest: SwiftProtobuf.Message, Swift
     if lhs.includeAvailable != rhs.includeAvailable {return false}
     if lhs.limit != rhs.limit {return false}
     if lhs.afterID != rhs.afterID {return false}
+    if lhs.totemID != rhs.totemID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
