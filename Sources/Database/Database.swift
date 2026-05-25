@@ -25,7 +25,7 @@ actor Database {
     private var pending: [WriteJob] = []
     private var isProcessing = false
 
-    init(config: DatabaseConfig = DatabaseConfig()) {
+    init(nodeId: UUID? = nil, config: DatabaseConfig = DatabaseConfig()) {
         var baseLogger = Logger(label: "totem-logger")
         baseLogger.logLevel = .debug
         self.baseLogger = baseLogger
@@ -33,7 +33,7 @@ actor Database {
         self.sinatra = Sinatra(logger: baseLogger)
         self.documentCache = DocumentCache()
 
-        let identity = NodeIdentity.load(logger: baseLogger)
+        let identity = NodeIdentity.load(override: nodeId, logger: baseLogger)
         self.nodeId = identity.nodeId
 
         self.tableMutator = TableMutator(nodeId: identity.nodeId, logger: TotemLogger(baseLogger),

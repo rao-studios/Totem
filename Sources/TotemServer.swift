@@ -44,8 +44,11 @@ struct TotemServer: AsyncParsableCommand {
     @ArgumentParser.Option(name: .long, help: "Mothership (Database) gRPC port.")
     var mothershipGrpcPort: Int = 9091
 
+    @ArgumentParser.Option(name: .long, help: "Fixed node UUID. Overrides any persisted node-id on disk.")
+    var nodeId: String?
+
     enum CodingKeys: CodingKey {
-        case host, port, grpcPort, mothershipHost, mothershipGrpcPort
+        case host, port, grpcPort, mothershipHost, mothershipGrpcPort, nodeId
         #if canImport(MLX)
         case useMLX, mlxModel
         #endif
@@ -56,7 +59,8 @@ struct TotemServer: AsyncParsableCommand {
         let app = try await setupApplication()
         app.logger.logLevel = .debug
 
-        let database = Database()
+        let fixedNodeId = nodeId.flatMap { UUID(uuidString: $0) }
+        let database = Database(nodeId: fixedNodeId)
         let embeddingModelProvider: any EmbeddingProviding = makeEmbeddingProvider(logger: app.logger)
 
         app.routes.defaultMaxBodySize = "100mb"

@@ -41,6 +41,10 @@ struct TotemRegistry: Codable {
     // Updated by `updateDocumentAccess(for:state:)` and `remove(documentId:)`.
     // Eliminates the O(D) scan of `documentAccess` on every global-scope query.
     var availableDocumentIds: Set<DocumentID> = []
+    // Pre-computed set of group IDs whose access is `.available`.
+    // Updated by `updateGroupAccess(for:state:)`.
+    // Eliminates the O(G) scan of `groupAccess` on every libraryRequest.
+    var availableGroupIds: Set<GroupID> = []
     // Billing and engagement stats per document.
     // Keyed by DocumentID — same identifier as the document itself.
     // Created when a document is registered; removed when it is deleted.
@@ -51,7 +55,7 @@ struct TotemRegistry: Codable {
     enum CodingKeys: String, CodingKey {
         case ownersDocuments, documentOwners, documentGroups, ownerDocumentGroup
         case ownersGroups, groupOwners, groups
-        case documentAccess, groupAccess, availableDocumentIds
+        case documentAccess, groupAccess, availableDocumentIds, availableGroupIds
         case documentStats
     }
 
@@ -83,6 +87,7 @@ struct TotemRegistry: Codable {
         documentAccess      = try c.decode([DocumentID: Access].self,      forKey: .documentAccess)
         groupAccess         = try c.decode([GroupID: Access].self,         forKey: .groupAccess)
         availableDocumentIds  = try c.decodeIfPresent(Set<DocumentID>.self,                forKey: .availableDocumentIds)  ?? []
+        availableGroupIds     = try c.decodeIfPresent(Set<GroupID>.self,                  forKey: .availableGroupIds)     ?? []
         documentStats         = try c.decodeIfPresent([DocumentID: Database.DocumentStats].self, forKey: .documentStats)       ?? [:]
     }
 
@@ -210,7 +215,7 @@ extension TotemRegistry {
         ownersGroups[owner] = groupOwnersHashes
         if groupOwners[groupId] == nil { groupOwners[groupId] = owner }
 
-        if groupAccess[groupId] == nil { groupAccess[groupId] = group.access ?? .restricted }
+        if groupAccess[groupId] == nil { updateGroupAccess(for: groupId, state: group.access ?? .restricted) }
     }
 }
 
@@ -306,8 +311,13 @@ extension TotemRegistry {
         groupAccess[id] ?? .unknown
     }
 
-    mutating func updateGroupAccess(for id: DocumentID, state: Access) {
+    mutating func updateGroupAccess(for id: GroupID, state: Access) {
         groupAccess[id] = state
+        if state == .available {
+            availableGroupIds.insert(id)
+        } else {
+            availableGroupIds.remove(id)
+        }
     }
 }
 
@@ -375,7 +385,7 @@ extension TotemRegistry {
                 ownersGroups[owner] = ownerGroupList
             }
             if groupOwners[groupId] == nil { groupOwners[groupId] = owner }
-            if groupAccess[groupId] == nil { groupAccess[groupId] = g.access ?? .restricted }
+            if groupAccess[groupId] == nil { updateGroupAccess(for: groupId, state: g.access ?? .restricted) }
             if let access = groupAccess[groupId] { updateDocumentAccess(for: documentId, state: access) }
         } else {
             updateDocumentAccess(for: documentId, state: .restricted)

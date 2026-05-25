@@ -262,6 +262,7 @@ actor RegistryMutator {
             registry.groups.removeValue(forKey: groupId)
             registry.groupOwners.removeValue(forKey: groupId)
             registry.groupAccess.removeValue(forKey: groupId)
+            registry.availableGroupIds.remove(groupId)
         }
 
         registry.ownersDocuments.removeValue(forKey: owner)
@@ -437,6 +438,7 @@ actor RegistryMutator {
             registry.groups.removeValue(forKey: groupId)
             registry.groupOwners.removeValue(forKey: groupId)
             registry.groupAccess.removeValue(forKey: groupId)
+            registry.availableGroupIds.remove(groupId)
             var ownerGroups = registry.ownersGroups[owner] ?? []
             ownerGroups.removeAll(where: { $0.id == groupId })
             registry.ownersGroups[owner] = ownerGroups

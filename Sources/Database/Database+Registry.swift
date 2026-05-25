@@ -23,6 +23,13 @@ extension Database {
             storage.save(state: registry)
         }
 
+        if registry.availableGroupIds.isEmpty && !registry.groupAccess.isEmpty {
+            registry.availableGroupIds = Set(
+                registry.groupAccess.compactMap { $0.value == .available ? $0.key : nil }
+            )
+            storage.save(state: registry)
+        }
+
         let allDocumentIds = Array(registry.documentOwners.keys)
         var initial: [DocumentID: Database.Document] = [:]
         var orphanedIds: [DocumentID] = []
@@ -106,27 +113,18 @@ extension Database {
 
 extension Database {
     nonisolated func groups(for ownerId: OwnerID) -> [Database.Group] {
-        let registry = self.registry
+        guard let registry else { return [] }
         let owner = TotemRegistry.Owner(id: ownerId)
-        let groups = registry?.ownersGroups[owner] ?? []
-
-        var groupsResponse: [Database.Group] = []
-        if let registry {
-            for group in groups {
-                guard group.ownerId == owner.id else { continue }
-                if let builtGroup = buildGroup(groupId: group.id, registry: registry) {
-                    groupsResponse.append(builtGroup)
-                }
-            }
+        return (registry.ownersGroups[owner] ?? []).compactMap { entry in
+            guard entry.ownerId == owner.id else { return nil }
+            return buildGroup(entry: entry, registry: registry)
         }
-        return groupsResponse
     }
 
     nonisolated func availableGroups() -> [Database.Group] {
         guard let registry else { return [] }
-        return registry.groupAccess
-            .filter { $0.value == .available }
-            .compactMap { buildGroup(groupId: $0.key, registry: registry) }
+        return registry.availableGroupIds
+            .compactMap { buildGroup(groupId: $0, registry: registry) }
     }
 
     func stats(for documentId: DocumentID) -> Database.DocumentStats? {
