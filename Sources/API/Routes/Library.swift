@@ -9,6 +9,13 @@ private struct LibraryRequest: Content {
     }
 }
 
+private struct LibraryDocumentRequest: Content {
+    let documentId: String
+    enum CodingKeys: String, CodingKey {
+        case documentId = "document_id"
+    }
+}
+
 struct LibraryResponse: Content {
     let groups: [Database.Group]
 }
@@ -24,6 +31,16 @@ func registerLibraryRoute(_ app: RoutesBuilder, _ database: Database) {
                 groups.append(g)
             }
         }
+        return LibraryResponse(groups: groups)
+    }
+
+    app.post("v1", "library", "document") { req async throws -> LibraryResponse in
+        let body = try req.content.decode(LibraryDocumentRequest.self)
+        guard let registry = database.registry else {
+            return LibraryResponse(groups: [])
+        }
+        let groupIds = registry.documentGroups[body.documentId] ?? []
+        let groups = groupIds.compactMap { database.buildGroup(groupId: $0, registry: registry) }
         return LibraryResponse(groups: groups)
     }
 }
