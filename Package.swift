@@ -1,0 +1,55 @@
+// swift-tools-version: 5.10.0
+
+import PackageDescription
+
+var packageDependencies: [Package.Dependency] = [
+    .package(url: "https://github.com/apple/swift-argument-parser.git", .upToNextMajor(from: "1.3.0")),
+    .package(url: "https://github.com/vapor/vapor.git", from: "4.0.0"),
+    .package(url: "https://github.com/apple/swift-crypto.git", from: "4.2.0"),
+    .package(url: "https://github.com/grpc/grpc-swift.git", from: "2.0.0"),
+    .package(url: "https://github.com/grpc/grpc-swift-nio-transport.git", from: "1.0.0"),
+    .package(url: "https://github.com/grpc/grpc-swift-protobuf.git", from: "1.0.0"),
+    .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.28.0"),
+]
+
+var targetDependencies: [Target.Dependency] = [
+    .product(name: "ArgumentParser", package: "swift-argument-parser"),
+    .product(name: "Vapor", package: "vapor"),
+    .product(name: "Crypto", package: "swift-crypto"),
+    .product(name: "GRPCCore", package: "grpc-swift"),
+    .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
+    .product(name: "GRPCProtobuf", package: "grpc-swift-protobuf"),
+    .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+]
+
+#if os(macOS)
+packageDependencies += [
+    .package(url: "https://github.com/riteshpakala/mlx.embeddings.git", branch: "main"),
+    .package(url: "https://github.com/riteshpakala/mlx-swift-lm", branch: "main"),
+]
+targetDependencies += [
+    .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+    .product(name: "mlx_embeddings", package: "mlx.embeddings"),
+]
+#endif
+
+let package = Package(
+  name: "totem",
+  platforms: [.macOS(.v14)],
+  dependencies: packageDependencies,
+  targets: [
+    .executableTarget(
+      name: "totem",
+      dependencies: targetDependencies,
+      path: "Sources"
+    ),
+    .testTarget(
+      name: "totem-tests",
+      dependencies: [
+        "totem",
+        .product(name: "XCTVapor", package: "vapor"),
+      ],
+      path: "Tests/totem-tests"
+    )
+  ]
+)

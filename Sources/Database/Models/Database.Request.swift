@@ -1,0 +1,67 @@
+import Foundation
+import Vapor
+
+struct DatabaseRequest: Content, Codable {
+    let ownerId: String
+    let group: Database.Group?
+    let groups: [Database.Group]?
+    let tags: [String]?
+    let aggregate: Bool?
+    let scope: DatabaseRequestScope?
+    let requestID: String?
+
+    init(ownerId: String,
+         group: Database.Group? = nil,
+         groups: [Database.Group]? = nil,
+         tags: [String]? = nil,
+         aggregate: Bool? = nil,
+         scope: DatabaseRequestScope? = nil,
+         requestID: String? = nil) {
+        self.ownerId = ownerId
+        self.group = group
+        self.groups = groups
+        self.tags = tags
+        self.aggregate = aggregate
+        self.scope = scope
+        self.requestID = requestID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case ownerId = "owner_id"
+        case group
+        case groups
+        case tags
+        case aggregate
+        case scope
+        case requestID = "request_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ownerId   = try c.decode(String.self,                    forKey: .ownerId)
+        group     = try c.decodeIfPresent(Database.Group.self,       forKey: .group)
+        groups    = try c.decodeIfPresent([Database.Group].self,     forKey: .groups)
+        tags      = try c.decodeIfPresent([String].self,         forKey: .tags)
+        aggregate = try c.decodeIfPresent(Bool.self,             forKey: .aggregate)
+        scope     = try c.decodeIfPresent(DatabaseRequestScope.self, forKey: .scope)
+        requestID = try c.decodeIfPresent(String.self,           forKey: .requestID)
+    }
+
+    /// In Totem there is no auth middleware — ownerId comes directly from the body.
+    func from(_ req: Request) throws -> DatabaseRequest {
+        return .init(
+            ownerId: self.ownerId.lowercased(),
+            group: self.group,
+            groups: self.groups,
+            tags: self.tags,
+            aggregate: self.aggregate,
+            scope: self.scope,
+            requestID: req.id
+        )
+    }
+}
+
+enum DatabaseRequestScope: String, Codable {
+    case global
+    case personal
+}

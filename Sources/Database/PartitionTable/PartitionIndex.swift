@@ -1,0 +1,199 @@
+//
+//  PartitionIndex.swift
+//  database-server
+//
+//  Created by Ritesh Pakala on 11/15/25.
+//
+
+import Foundation
+import Logging
+
+/// Each document creates a PartitionIndex. Multiple partitions are a reflection of
+/// the chunking algorithm.
+///
+/// **Memory layout**
+/// Only `pq` (codebooks), `slots` (lean PQ codes + IDs), `tags`, and
+/// `tagsCompressedEmbedding` are held in memory and persisted in
+/// `shard-<nodeId>-indices`. Partition metadata lives in per-document files
+/// (`documents/{id}-parts`) and is loaded on demand at content-resolution time.
+struct PartitionIndex: Codable {
+    var pq: PartitionQuantizer
+    /// Lean records for PQ scoring — no content, no raw embedding.
+    var slots: [PartitionSlot]
+    /// Document-level tags provided by the requestor at index time.
+    var tags: [String]
+    /// Exact embedding of `tags.joined(separator: " ")`, stored for precise dot-product
+    /// distance at search time. Nil when no tags were supplied.
+    var tagsEmbedding: [Float]?
+
+    var metadata: Data?
+
+    /// Cosine similarity floor for the tag pre-filter (generous — coarse pass, not a hard gate).
+    static let tagSimilarityThreshold: Float = 0.15
+
+    init() {
+        pq            = .init()
+        slots         = []
+        tags          = []
+        tagsEmbedding = nil
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pq
+        case slots
+        case tags
+        case tagsEmbedding = "tags_embedding"
+        case metadata
+    }
+
+    // MARK: - Train
+
+    /// Trains the quantizer on hint embeddings and fills `slots`.
+    /// Partition metadata is NOT retained in memory — the caller (TableMutator)
+    /// persists it to `documents/{id}-parts` before calling this method.
+    mutating func train(
+        _ partitions: [Database.Partition],
+        tags: [String] = [],
+        tagsEmbedding: [Float]? = nil,
+        documentId: String,
+        logger: TotemLogger
+    ) {
+        var partitions = partitions
+        let embeddingVectors = partitions.map { $0.embedding }
+
+        pq.train(vectors: embeddingVectors)
+
+        for i in 0..<partitions.count {
+            partitions[i].compressedEmbedding = pq.encode(vector: partitions[i].embedding)
+            partitions[i].embedding = []
+        }
+
+        // Populate lean slots — no content retained in-memory.
+        self.slots.append(contentsOf: partitions.map {
+            PartitionSlot(id: $0.id, documentId: $0.documentId,
+                          compressedEmbedding: $0.compressedEmbedding)
+        })
+
+        self.tags = tags
+        self.tagsEmbedding = tagsEmbedding
+
+        logger.info(
+            "Index Train",
+            "✨ PQ trained — \(partitions.count) partition(s) compressed (docId: \(documentId), total: \(self.slots.count), tags: \(tags.count))",
+            service: .database,
+            flow: .embed(documentId: documentId)
+        )
+    }
+
+    // MARK: - Tag Distance
+
+    /// Exact dot-product distance between the query embedding and this document's tags embedding.
+    /// Returns nil when no tags were indexed for this document (caller should include the document).
+    func tagDistance(queryEmbedding: [Float]) -> Float? {
+        guard let stored = tagsEmbedding,
+              stored.count == queryEmbedding.count else { return nil }
+        var dot: Float = 0
+        vDSP_dotpr(stored, 1, queryEmbedding, 1, &dot, vDSP_Length(stored.count))
+        return 1.0 - dot
+    }
+
+    // MARK: - Search
+
+    /// Scores all slots with ADC, applies Sinatra, and resolves the top-k results
+    /// into full `Database.Partition` objects via `metadataLoader`.
+    func search(queryEmbedding: [Float],
+                k: Int,
+                sinatra: Sinatra,
+                sinatraRegistry: SinatraRegistry?,
+                documentStats: [DocumentID: Database.DocumentStats] = [:],
+                request: DatabaseRequest,
+                metadataLoader: PartitionDataLoader? = nil,
+                adjustWithSinatra: Bool = true,
+                logger: TotemLogger) -> (result: PartitionSearchResult, adjustment: SinatraAdjustment?) {
+
+        let distanceTable = pq.buildDistanceTable(queryVector: queryEmbedding)
+        var results: [(slot: PartitionSlot, distance: Float)] = []
+
+        for slot in slots {
+            guard let compressed = slot.compressedEmbedding else { continue }
+            let distance = pq.computeDistance(table: distanceTable, documentCodes: compressed)
+            results.append((slot, distance))
+        }
+
+        results.sort { $0.distance < $1.distance }
+        let topK = Array(results.prefix(k))
+
+        let candidates: [(slot: PartitionSlot, distance: Float)]
+        let adjustment: SinatraAdjustment?
+
+        if adjustWithSinatra {
+            let adjusted: [(slot: PartitionSlot, distance: Float)] = topK.map { result in
+                let inference = SinatraInference(
+                    partitionId: result.slot.id,
+                    documentId:  result.slot.documentId,
+                    distance:    result.distance
+                )
+                let prediction = sinatra.infer(inference, registry: sinatraRegistry,
+                                               documentStats: documentStats, request: request)
+                return (result.slot, prediction.adjustedDistance)
+            }
+            candidates = adjusted.sorted { $0.distance < $1.distance }
+
+            let original    = topK.map     { String(format: "%.4f", $0.distance) }
+            let inferred    = candidates.map { String(format: "%.4f", $0.distance) }
+            let pqThreshold = pq.effectiveThreshold
+            let adjById: [String: Float] = Dictionary(
+                adjusted.map { ($0.slot.id, $0.distance) },
+                uniquingKeysWith: min
+            )
+            let entries: [SinatraAdjustment.Entry] = topK.map { orig in
+                SinatraAdjustment.Entry(
+                    partitionId:      orig.slot.id,
+                    originalDistance: orig.distance,
+                    adjustedDistance: adjById[orig.slot.id] ?? orig.distance,
+                    threshold:        pqThreshold
+                )
+            }
+            adjustment = SinatraAdjustment(
+                partitionCount:      topK.count,
+                original:            original,
+                inferred:            inferred,
+                pqDistanceThreshold: pqThreshold,
+                entries:             entries
+            )
+        } else {
+            candidates = topK
+            adjustment = nil
+        }
+
+        let threshold       = pq.effectiveThreshold
+        let filtered        = candidates.filter { $0.distance < threshold }
+        let finalCandidates = filtered.isEmpty ? candidates : filtered
+
+        let scores     = finalCandidates.map { $0.distance }
+        let partitions = finalCandidates.map { r in
+            r.slot.toPartition(metadata: metadataLoader?(r.slot.documentId, r.slot.id), indexMetadata: self.metadata)
+        }
+
+        return (result: (scores, partitions), adjustment: adjustment)
+    }
+
+    /// Scores all slots with ADC and returns the top-k with their distances.
+    func searchWithScores(queryEmbedding: [Float],
+                          k: Int,
+                          metadataLoader: PartitionDataLoader? = nil) -> [(Database.Partition, Float)] {
+        let distanceTable = pq.buildDistanceTable(queryVector: queryEmbedding)
+        var results: [(slot: PartitionSlot, distance: Float)] = []
+
+        for slot in slots {
+            guard let compressed = slot.compressedEmbedding else { continue }
+            let distance = pq.computeDistance(table: distanceTable, documentCodes: compressed)
+            results.append((slot, distance))
+        }
+
+        results.sort { $0.distance < $1.distance }
+        return Array(results.prefix(k)).map { r in
+            (r.slot.toPartition(metadata: metadataLoader?(r.slot.documentId, r.slot.id)), r.distance)
+        }
+    }
+}

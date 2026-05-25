@@ -1,0 +1,185 @@
+//
+//  Flow20_BatchEmbeddingsRaceTests.swift
+//  database-serverTests
+//
+//  Tests the link-only simultaneous-request race condition in the batch
+//  embeddings route end-to-end using a real Vapor application, a real Database
+//  instance, and a MockEmbeddingProvider (no network calls).
+//
+//  Race scenario
+//  ─────────────
+//  Two requests submit the same document simultaneously.  Request A completes
+//  Phase 1 first (doc not in registry → prepared), calls enqueuePut, and the
+//  IndexQueue registers the document.  Request B's Phase 1 then runs and sees
+//  the document as already existing → classified as link-only, prepared is
+//  empty.
+//
+//  Old behaviour: groupEnrichedReq guarded on `!prepared.isEmpty`, so when
+//  prepared was empty the bare databaseReq (nil group metadata) was passed to
+//  linkOwnerBatch → group created with no tags.
+//
+//  Fix: Phase 1 now preserves texts for link-only results. groupEnrichedReq
+//  runs TagGenerator on both prepared AND link-only items, so even an all-
+//  link-only request produces a tag-enriched group.
+//
+
+import XCTest
+import Vapor
+import XCTVapor
+@testable import totem
+
+final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
+
+    // MARK: - Helpers
+
+    private var tempDir: URL!
+
+    override func setUpWithError() throws {
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("database-flow20-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: tempDir)
+        wipeTotemPersistenceFiles()
+    }
+
+    /// Builds a minimal Vapor Application with just the batch embeddings route
+    /// registered, backed by a real Database instance and MockEmbeddingProvider.
+    /// Totem has no auth middleware — ownerId comes directly from the request body.
+    private func makeApp(database: Database) throws -> Application {
+        let app = Application(.testing)
+        let mock = MockEmbeddingProvider()
+        let protected = app.grouped(Middleware())
+        registerBatchEmbeddingsRoute(
+            protected, database,
+            embeddingModelProvider: mock
+        )
+        return app
+    }
+
+    private func makeDatabase() async -> Database {
+        wipeTotemPersistenceFiles()
+        let database = Database()
+        await database.initializationTask.value
+        return database
+    }
+
+    /// Sends a POST to `v1/batch/embeddings` and returns the decoded response.
+    private func embed(
+        app: Application,
+        ownerId: String,
+        groupId: String,
+        groupLabel: String,
+        texts: [String]
+    ) throws -> EmbeddingBatchResponse {
+        let body: [String: Any] = [
+            "inputs": texts,
+            "database": [
+                "owner_id": ownerId,
+                "group": ["id": groupId, "label": groupLabel, "owner_id": ownerId],
+                "scope": "personal"
+            ]
+        ]
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
+
+        var response: EmbeddingBatchResponse?
+        try app.test(
+            .POST, "v1/batch/embeddings",
+            headers: [
+                "Content-Type": "application/json",
+                "X-Test-Owner-Id": ownerId
+            ],
+            body: ByteBuffer(data: bodyData)
+        ) { res in
+            XCTAssertEqual(res.status, .ok, "Route must return 200 OK")
+            response = try res.content.decode(EmbeddingBatchResponse.self)
+        }
+        return response!
+    }
+
+    // =========================================================================
+    // MARK: - Race condition: same document in two sequential requests
+    // =========================================================================
+
+    /// Verifies that a group created via the link-only path still receives tags.
+    ///
+    /// Steps:
+    ///  1. Request A: submit text T under group G1 → prepared path, IndexQueue
+    ///     registers doc D and creates group G1 with tags.
+    ///  2. Drain the IndexQueue so the registry snapshot is up to date.
+    ///  3. Request B: submit the same text T under group G2 → Phase 1 sees D as
+    ///     existing, classifies it as link-only, prepared is empty.
+    ///  4. Drain the IndexQueue (barrier for any pending linkOwnerBatch work).
+    ///  5. Assert group G2 exists and has tags derived from T.
+    func testLinkOnlyPathPropagatesTagsToNewGroup() async throws {
+        let database = await makeDatabase()
+        let app  = try makeApp(database: database)
+        defer { app.shutdown() }
+
+        let ownerId     = "race-route-owner"
+        let sharedTexts = ["loop quantum gravity gauge connection fiber bundle"]
+
+        // ── Request A: new document → prepared path ───────────────────────────
+        let resA = try embed(app: app, ownerId: ownerId,
+                             groupId: "race-group-a", groupLabel: "Group A",
+                             texts: sharedTexts)
+        XCTAssertTrue(resA.success, "Request A must succeed")
+
+        // Drain IndexQueue so the document is fully registered before B's Phase 1.
+        _ = await database.removeAll(ownerId: "barrier", request: .test())
+
+        let owner = TotemRegistry.Owner(id: ownerId)
+        let groupA = database.registry?.ownersGroups[owner]?
+            .first { $0.id == "race-group-a" }
+        XCTAssertNotNil(groupA, "Group A must be registered after Request A drains")
+        XCTAssertFalse(groupA?.metadata?.tags.isEmpty ?? true,
+            "Group A must have tags from the prepared-path document")
+
+        // ── Request B: same document → link-only path ─────────────────────────
+        // The registry now has the document; Phase 1 will classify it as
+        // link-only (exists + owner linked + only group-a linked → new group).
+        let resB = try embed(app: app, ownerId: ownerId,
+                             groupId: "race-group-b", groupLabel: "Group B",
+                             texts: sharedTexts)
+        XCTAssertTrue(resB.success, "Request B must succeed")
+
+        // Give linkOwnerBatch (background Task) time to execute.
+        _ = await database.removeAll(ownerId: "barrier", request: .test())
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        // ── Assert: group B has tags from the link-only enriched request ──────
+        let groupB = database.registry?.ownersGroups[owner]?
+            .first { $0.id == "race-group-b" }
+        XCTAssertNotNil(groupB,
+            "Group B must be created by linkOwnerBatch even when prepared is empty")
+        XCTAssertFalse(groupB?.metadata?.tags.isEmpty ?? true,
+            "Group B must have tags — the fixed groupEnrichedReq must include " +
+            "tags computed from the link-only document's preserved texts, even " +
+            "when prepared is empty")
+    }
+
+    /// Contrast: when the same document is submitted for the first time under
+    /// group G, the normal prepared path runs and the group receives tags.
+    /// This confirms the mock and test harness are working correctly.
+    func testPreparedPathAlwaysProducesTags() async throws {
+        let database = await makeDatabase()
+        let app  = try makeApp(database: database)
+        defer { app.shutdown() }
+
+        let ownerId = "prepared-route-owner"
+        let res = try embed(app: app, ownerId: ownerId,
+                            groupId: "prepared-group", groupLabel: "Physics",
+                            texts: ["quantum field theory gauge boson interactions"])
+        XCTAssertTrue(res.success, "Request must succeed")
+        _ = await database.removeAll(ownerId: "barrier", request: .test())
+
+        let owner = TotemRegistry.Owner(id: ownerId)
+        let group = database.registry?.ownersGroups[owner]?
+            .first { $0.id == "prepared-group" }
+        XCTAssertNotNil(group, "Group must be registered")
+        XCTAssertFalse(group?.metadata?.tags.isEmpty ?? true,
+            "Prepared-path group must have tags from TagGenerator")
+    }
+}

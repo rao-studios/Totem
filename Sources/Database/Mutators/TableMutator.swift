@@ -1,0 +1,633 @@
+//
+//  TableMutator.swift
+//  database-server
+//
+//  Created by Ritesh Pakala on 3/7/26.
+//
+
+import Foundation
+
+/// Serializes all read-modify-write operations on the PartitionTable file.
+///
+/// `PartitionTable` is loaded from disk, mutated, and saved on every `index`,
+/// `remove`, and `removeAll` call. Without serialization, concurrent embedding
+/// requests each load the same table state, apply their own mutations locally,
+/// and save — last write wins, clobbering all other concurrent updates.
+///
+/// Wrapping these operations in an actor guarantees serial execution: each
+/// mutation sees the full result of the previous one before it reads.
+actor TableMutator {
+    private let nodeId: UUID
+    private let cache:  TotemCache<PartitionTable>
+    private let logger: TotemLogger
+
+    /// Maximum nodes per HNSW shard before a new shard is spawned.
+    /// Passed in from `DatabaseConfig.shardSizeThreshold` at init time.
+    let shardSizeThreshold: Int
+
+    // MARK: - Indices persistence (split from topology — Phase 5)
+
+    nonisolated(unsafe) private let indicesPersistence: FilePersistence
+    private let indicesTotemLogger: TotemLogger
+
+    // MARK: - WAL (Phase 4 — one WAL file per shard)
+    //
+    // Shard 0 uses the legacy filename `shard-<nodeId>-topology-wal`.
+    // Shard N (N≥1) uses `shard-<nodeId>-<N>-topology-wal`.
+
+    private var wals:          [Int: HNSWTopologyWAL] = [:]
+    private var walByteCounts: [Int: Int]             = [:]
+    /// Maximum WAL file size per shard before a checkpoint is forced (default: 64 MB).
+    static let walCheckpointThreshold = 64 * 1024 * 1024
+
+    // MARK: - Debounced disk saves / checkpoints
+
+    private var tableDirty = false
+    private var flushTask:  Task<Void, Never>?
+
+    // MARK: - Debounced indices saves
+
+    private var indicesDirty = false
+    private var indicesFlushTask: Task<Void, Never>?
+
+    // MARK: - Indices-ready gate
+
+    private var _indicesReady = false
+    private var _indicesWaiters: [CheckedContinuation<Void, Never>] = []
+
+    // MARK: - Deferred compaction
+
+    private var compactTask: Task<Void, Never>?
+    /// Fraction of deleted nodes above which a background compact is scheduled.
+    static let compactThreshold: Double = 0.35
+
+    // MARK: - Vector stores (Phase 3 — one mmap'd file per shard)
+    //
+    // Shard 0 uses the legacy filename `shard-<nodeId>-vectors`.
+    // Shard N (N≥1) uses `shard-<nodeId>-<N>-vectors`.
+    //
+    // `ReadWriteValue` allows nonisolated access from `initializeTable()` (which
+    // runs before the actor queue is active) to seed stores synchronously.
+
+    private let _vectorStores: ReadWriteValue<[Int: HNSWVectorStore]> = .init([:])
+
+    /// The vector store for shard 0 (backward-compat accessor).
+    nonisolated var vectorStore: HNSWVectorStore? {
+        _vectorStores.withReadLock { $0[0] }
+    }
+
+    nonisolated func vectorStore(for shardIndex: Int) -> HNSWVectorStore? {
+        _vectorStores.withReadLock { $0[shardIndex] }
+    }
+
+    /// Seeds the vector store for a given shard. Called from `initializeTable()` before
+    /// the actor queue is active — safe because no actor method touches `_vectorStores` until after.
+    nonisolated func seedVectorStore(_ store: HNSWVectorStore, for shardIndex: Int = 0) {
+        _vectorStores.withWriteLock { $0[shardIndex] = store }
+    }
+
+    // MARK: - Init
+
+    init(nodeId: UUID, logger: TotemLogger, shardSizeThreshold: Int = 10_000) {
+        self.nodeId               = nodeId
+        self.shardSizeThreshold   = shardSizeThreshold
+        self.cache  = TotemCache(
+            persistence: FilePersistence(
+                key:    "shard-\(nodeId)-topology",
+                kind:   .basic,
+                logger: logger.base
+            )
+        )
+        let ip = FilePersistence(
+            key:    "shard-\(nodeId)-indices",
+            kind:   .basic,
+            logger: logger.base
+        )
+        self.indicesPersistence = ip
+        self.indicesTotemLogger  = logger
+        self.logger = logger
+        // Open (or create) the WAL file for shard 0. Additional shards' WALs are opened
+        // lazily in putBatch when those shards are spawned.
+        let walURL = FilePersistence.getDefaultURL()
+            .appendingPathComponent("shard-\(nodeId)-topology-wal")
+        if let w = try? HNSWTopologyWAL(url: walURL) {
+            wals[0]          = w
+            walByteCounts[0] = w.byteSize
+        }
+    }
+
+    // MARK: - Startup seeding
+
+    nonisolated func seed(_ initial: PartitionTable) { cache.seed(initial) }
+
+    nonisolated func loadIndicesFromDisk() -> [DocumentID: PartitionIndex]? {
+        var merged = [DocumentID: PartitionIndex]()
+        var foundAny = false
+        var i = 0
+        while true {
+            let fp = FilePersistence(key: "shard-\(nodeId)-\(i)-indices", kind: .basic, logger: indicesTotemLogger.base)
+            guard FileManager.default.fileExists(atPath: fp.url.path()) else { break }
+            if let dict: [DocumentID: PartitionIndex] = fp.restore() {
+                merged.merge(dict, uniquingKeysWith: { a, _ in a })
+                foundAny = true
+            }
+            i += 1
+        }
+        if foundAny { return merged }
+        return indicesPersistence.restore()  // legacy single-file fallback
+    }
+
+    func mergeIndices(_ indices: [DocumentID: PartitionIndex]) async {
+        guard var table = cache.snapshot else { return }
+        for (docId, index) in indices where table.index(for: docId) == nil {
+            guard let si = table.documentShardIndex[docId], si < table.shards.count else { continue }
+            table.shards[si].indices[docId] = index
+        }
+        cache.update(table)
+    }
+
+    func markIndicesReady() {
+        guard !_indicesReady else { return }
+
+        // Tombstone HNSW nodes for documents whose PQ index was lost — indexed after
+        // the last indices-file flush, then the server crashed before the 3s debounce
+        // fired. WAL restores the graph nodes; the stale indices file has no entry.
+        // These docs will never resolve in search until re-indexed, so mark them
+        // deleted now so HNSW stops returning them as unresolvable candidates.
+        //
+        // Guard: if indices is completely empty but keys is non-empty, the guardian
+        // deadline fired before mergeIndices() ran (loadIndicesFromDisk took >300 s).
+        // In that case every key would look orphaned — skip tombstoning and let the
+        // real markIndicesReady() call (from the Phase 5 Task) handle it once
+        // mergeIndices completes. The guardian only unblocks waiters here.
+        if var table = cache.snapshot, table.shards.contains(where: { !$0.indices.isEmpty }) {
+            let orphanedIds = table.keys.filter { table.index(for: $0) == nil }
+            if !orphanedIds.isEmpty {
+                for id in orphanedIds {
+                    table.remove(id: id)
+                }
+                for i in table.shards.indices {
+                    table.shards[i].pendingWALRecords = []
+                }
+                cache.update(table)
+                logger.warning(
+                    "⚠️ [Table Init] Tombstoned \(orphanedIds.count) orphaned HNSW node(s) — PQ index missing after crash; re-index required: \(orphanedIds.prefix(5))",
+                    service: .database
+                )
+            }
+        }
+
+        _indicesReady = true
+        let waiters = _indicesWaiters
+        _indicesWaiters = []
+        waiters.forEach { $0.resume() }
+    }
+
+    func waitForIndices() async {
+        if _indicesReady { return }
+        await withCheckedContinuation { continuation in
+            _indicesWaiters.append(continuation)
+        }
+    }
+
+    private func savePartitionData(documentId: DocumentID, partitions: [Database.Partition]) {
+        let metadata = partitions.map { PartitionData(from: $0) }
+        FilePersistence(key: "documents/\(documentId)-parts", kind: .basic,
+                        logger: logger.base).save(state: metadata)
+    }
+
+    private func saveIndicesAsync(_ table: PartitionTable) {
+        let shards    = table.shards
+        let nodeId    = self.nodeId
+        let baseLogger = indicesTotemLogger.base
+        Task.detached {
+            for i in shards.indices {
+                FilePersistence(
+                    key:    "shard-\(nodeId)-\(i)-indices",
+                    kind:   .basic,
+                    logger: baseLogger
+                ).save(state: shards[i].indices)
+            }
+        }
+    }
+
+    // MARK: - Snapshot
+
+    nonisolated var snapshot: PartitionTable? { cache.snapshot }
+
+    // MARK: - Private
+
+    private func loadedTable() async -> PartitionTable {
+        await cache.load { .init() }
+    }
+
+    /// Drain WAL records from all shards, appending each shard's records to its own WAL file.
+    /// Schedules a checkpoint if any WAL has grown large; falls back to debounced full save.
+    private func scheduleSave(draining table: inout PartitionTable) {
+        var anyWALAppended = false
+        for i in table.shards.indices {
+            let records = table.shards[i].pendingWALRecords
+            table.shards[i].pendingWALRecords = []
+            guard !records.isEmpty else { continue }
+            if let w = wals[i] {
+                records.forEach { try? w.append($0) }
+                walByteCounts[i] = w.byteSize
+                anyWALAppended = true
+            } else {
+                tableDirty = true
+            }
+        }
+        if anyWALAppended {
+            let anyOverThreshold = wals.contains { _, w in w.byteSize >= Self.walCheckpointThreshold }
+            if anyOverThreshold { scheduleCheckpoint() }
+            // Persist indices at WAL cadence so they survive an unclean shutdown
+            // between the put and the 3-second debounce in scheduleIndicesSave().
+            // Without this, restarted servers load an empty indices map and every
+            // HNSW candidate is silently dropped in HNSWShard.search → 0 results.
+            saveIndicesAsync(table)
+        } else if tableDirty {
+            guard flushTask == nil else { return }
+            flushTask = Task {
+                do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { return }
+                self.flushIfDirty()
+            }
+        }
+    }
+
+    private func scheduleIndicesSave() {
+        indicesDirty = true
+        guard indicesFlushTask == nil else { return }
+        indicesFlushTask = Task {
+            do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
+            self.flushIndicesIfDirty()
+        }
+    }
+
+    private func flushIndicesIfDirty() {
+        guard indicesDirty, let table = cache.snapshot else {
+            indicesFlushTask = nil; return
+        }
+        saveIndicesAsync(table)
+        indicesDirty      = false
+        indicesFlushTask  = nil
+    }
+
+    private func scheduleCheckpoint() {
+        tableDirty = true
+        guard flushTask == nil else { return }
+        flushTask = Task {
+            do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
+            self.checkpoint()
+        }
+    }
+
+    private func scheduleCompactIfNeeded() {
+        guard compactTask == nil, let table = cache.snapshot else { return }
+        let needsCompact = table.shards.contains { shard in
+            let stats = shard.graphStats
+            let total = stats.liveNodes + stats.deletedNodes
+            guard total > 0, stats.deletedNodes > 0 else { return false }
+            return Double(stats.deletedNodes) / Double(total) >= Self.compactThreshold
+        }
+        guard needsCompact else { return }
+
+        compactTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+            } catch {
+                return
+            }
+            _ = await self.compact()
+            self.compactTask = nil
+        }
+    }
+
+    // MARK: - Graceful Shutdown
+
+    func flushAllForShutdown() async {
+        flushTask?.cancel()
+        flushTask = nil
+        indicesFlushTask?.cancel()
+        indicesFlushTask = nil
+
+        guard let table = cache.snapshot else { return }
+
+        // Sync all per-shard vector stores and truncate all WALs.
+        _vectorStores.withReadLock { stores in stores.values.forEach { $0.sync() } }
+        await cache.saveNow(table)
+        for (i, w) in wals { try? w.truncate(); walByteCounts[i] = 0 }
+        tableDirty   = false
+
+        for i in table.shards.indices {
+            FilePersistence(
+                key:    "shard-\(nodeId)-\(i)-indices",
+                kind:   .basic,
+                logger: indicesTotemLogger.base
+            ).save(state: table.shards[i].indices)
+        }
+        indicesDirty = false
+    }
+
+    /// Full checkpoint: sync all vector stores, save topology, truncate all WALs, flush indices.
+    /// WAL truncation is deferred until after saveNow completes to avoid data loss
+    /// if the server dies between truncation and the async save completing.
+    private func checkpoint() {
+        guard let table = cache.snapshot else { flushTask = nil; return }
+        tableDirty = false
+        flushTask  = nil
+        _vectorStores.withReadLock { stores in stores.values.forEach { $0.sync() } }
+        let capturedWals = wals
+        Task {
+            await self.cache.saveNow(table)
+            for (i, w) in capturedWals {
+                try? w.truncate()
+                self.walByteCounts[i] = 0
+            }
+        }
+        if indicesDirty {
+            saveIndicesAsync(table)
+            indicesDirty     = false
+            indicesFlushTask?.cancel()
+            indicesFlushTask = nil
+        }
+    }
+
+    private func flushIfDirty() {
+        guard tableDirty, let table = cache.snapshot else {
+            flushTask = nil
+            return
+        }
+        tableDirty = false
+        flushTask  = nil
+        _vectorStores.withReadLock { stores in stores.values.forEach { $0.sync() } }
+        let capturedWals = wals
+        Task {
+            await self.cache.saveNow(table)
+            for (i, w) in capturedWals {
+                try? w.truncate()
+                self.walByteCounts[i] = 0
+            }
+        }
+        if indicesDirty {
+            saveIndicesAsync(table)
+            indicesDirty     = false
+            indicesFlushTask?.cancel()
+            indicesFlushTask = nil
+        }
+    }
+
+    // MARK: - Shard spawn helper
+
+    /// Spawns a new shard by appending it to `table.shards`, creating a fresh vector store
+    /// and WAL file. Must be called BEFORE any put targeting the new shard.
+    private func spawnShard(in table: inout PartitionTable) {
+        let newSI    = table.shards.count
+        var newShard = HNSWShard()
+
+        let vName = "shard-\(nodeId)-\(newSI)-vectors"
+        let vURL  = FilePersistence.getDefaultURL().appendingPathComponent(vName)
+        if let store = try? HNSWVectorStore(url: vURL, nodeCount: 0) {
+            newShard.vectorStore = store
+            _vectorStores.withWriteLock { $0[newSI] = store }
+        }
+
+        let wName = "shard-\(nodeId)-\(newSI)-topology-wal"
+        let wURL  = FilePersistence.getDefaultURL().appendingPathComponent(wName)
+        if let w = try? HNSWTopologyWAL(url: wURL) {
+            wals[newSI]          = w
+            walByteCounts[newSI] = 0
+        }
+
+        table.shards.append(newShard)
+        logger.info(
+            "Multi-Shard",
+            "Spawned global shard \(newSI) (shard \(newSI - 1) reached \(shardSizeThreshold) nodes)",
+            service: .database
+        )
+    }
+
+    /// Registers a pre-existing WAL for a shard that was spawned after the last checkpoint
+    /// (i.e., the shard exists only as a WAL file with no entry in the base topology file).
+    /// Called from `initializeTable()` during startup shard recovery.
+    func registerOrphanedShardWAL(_ w: HNSWTopologyWAL, byteCount: Int, for shardIndex: Int) {
+        wals[shardIndex]          = w
+        walByteCounts[shardIndex] = byteCount
+    }
+
+    // MARK: - Shard selection
+
+    /// Returns the index of the oldest shard (lowest index) whose `nodes.count` is below
+    /// `shardSizeThreshold` — i.e. a shard that has physical capacity freed by compaction.
+    /// Returns `nil` when every shard is at capacity, signalling that a new shard must be spawned.
+    ///
+    /// Uses `nodes.count` (the physical array length) rather than `liveNodes` so only
+    /// compacted shards qualify — inserting into a shard with soft-deleted but un-compacted
+    /// nodes would grow its WAL unnecessarily and doesn't reclaim vector file space.
+    private func oldestAvailableShard(in table: PartitionTable) -> Int? {
+        table.shards.indices.first { table.shards[$0].nodes.count < shardSizeThreshold }
+    }
+
+    // MARK: - Mutations
+
+    func put(id: DocumentID, partitions: [Database.Partition], tags: [String] = [], tagsEmbedding: [Float]? = nil, metadata: Data? = nil, request: DatabaseRequest) async {
+        _ = await loadedTable()
+        var table = cache.snapshot ?? PartitionTable()
+        let targetSI: Int
+        if let si = oldestAvailableShard(in: table) {
+            targetSI = si
+        } else {
+            spawnShard(in: &table)
+            targetSI = table.activeShardIndex
+        }
+        savePartitionData(documentId: id, partitions: partitions)
+        table.put(id: id, partitions: partitions, tags: tags, tagsEmbedding: tagsEmbedding,
+                  metadata: metadata, request: request, logger: logger, targetShard: targetSI)
+        scheduleSave(draining: &table)
+        cache.update(table)
+        scheduleIndicesSave()
+    }
+
+    func putBatch(items: [(id: DocumentID, partitions: [Database.Partition], tags: [String], tagsEmbedding: [Float]?, metadata: Data?, request: DatabaseRequest)]) async {
+        _ = await loadedTable()
+        var table = cache.snapshot ?? PartitionTable()
+        // Do not yield mid-batch. Yielding releases actor exclusivity, allowing a concurrent
+        // putBatch to start from the same stale cache snapshot and advance store.nodeCount.
+        // When this task resumes, its nodes.count no longer matches store.nodeCount, so
+        // subsequent nodes get a vectorIndex that doesn't correspond to their store slot.
+        for (id, partitions, tags, tagsEmbedding, metadata, request) in items {
+            // Route to the oldest shard with physical capacity (post-compaction nodes.count
+            // below threshold). Only spawn when every shard is genuinely full.
+            let targetSI: Int
+            if let si = oldestAvailableShard(in: table) {
+                targetSI = si
+            } else {
+                spawnShard(in: &table)
+                targetSI = table.activeShardIndex
+            }
+            savePartitionData(documentId: id, partitions: partitions)
+            table.put(id: id, partitions: partitions, tags: tags, tagsEmbedding: tagsEmbedding,
+                      metadata: metadata, request: request, logger: logger, targetShard: targetSI)
+        }
+        scheduleSave(draining: &table)
+        cache.update(table)
+        scheduleIndicesSave()
+        scheduleCompactIfNeeded()
+    }
+
+    func remove(id: DocumentID) async {
+        FilePersistence(key: "documents/\(id)-parts", kind: .basic, logger: logger.base).purge()
+        var table = await loadedTable()
+        table.remove(id: id)
+        // Drain WAL records from all shards (only the affected shard emits non-empty records).
+        for i in table.shards.indices {
+            let records = table.shards[i].pendingWALRecords
+            table.shards[i].pendingWALRecords = []
+            records.forEach { try? wals[i]?.append($0) }
+        }
+        cache.update(table)
+        _vectorStores.withReadLock { stores in stores.values.forEach { $0.sync() } }
+        let capturedWalsRemove = wals
+        Task {
+            await self.cache.saveNow(table)
+            for (i, w) in capturedWalsRemove {
+                try? w.truncate()
+                self.walByteCounts[i] = 0
+            }
+        }
+        saveIndicesAsync(table)
+    }
+
+    func removeAll(documentIds: [DocumentID], request: DatabaseRequest) async {
+        for documentId in documentIds {
+            FilePersistence(key: "documents/\(documentId)-parts", kind: .basic, logger: logger.base).purge()
+        }
+        var table = await loadedTable()
+        for documentId in documentIds {
+            table.remove(id: documentId)
+        }
+        // Drain WAL records from all shards before checkpoint.
+        for i in table.shards.indices {
+            let records = table.shards[i].pendingWALRecords
+            table.shards[i].pendingWALRecords = []
+            records.forEach { try? wals[i]?.append($0) }
+        }
+        cache.update(table)
+        _vectorStores.withReadLock { stores in stores.values.forEach { $0.sync() } }
+        let capturedWalsRemoveAll = wals
+        Task {
+            await self.cache.saveNow(table)
+            for (i, w) in capturedWalsRemoveAll {
+                try? w.truncate()
+                self.walByteCounts[i] = 0
+            }
+        }
+        saveIndicesAsync(table)
+        logger.info(
+            "Remove All",
+            "Purged \(documentIds.count) document(s) from partition table",
+            service: .database,
+            request: request
+        )
+    }
+
+    func syncEf(efSearch: Int, emaExplored: Float) {
+        guard var table = cache.snapshot else { return }
+        for i in table.shards.indices {
+            table.shards[i].efSearch    = efSearch
+            table.shards[i].emaExplored = emaExplored
+        }
+        cache.update(table)
+    }
+
+    /// Finds documents that appear as live nodes in more than one shard — a symptom of
+    /// the pre-fix cross-shard upsert bug — and marks the older copies as deleted.
+    /// Returns the number of document-shard pairs removed. Call compact() afterwards
+    /// to reclaim vector file space. Idempotent: returns 0 when no duplicates exist.
+    @discardableResult
+    func deduplicateCrossShardNodes() async -> Int {
+        var table = await loadedTable()
+
+        var shardsByDoc: [String: [Int]] = [:]
+        for (si, shard) in table.shards.enumerated() {
+            let docIds = Set(shard.graph.nodes.lazy.filter { !$0.isDeleted }.map(\.documentId))
+            for docId in docIds { shardsByDoc[docId, default: []].append(si) }
+        }
+
+        let duplicates = shardsByDoc.filter { $0.value.count > 1 }
+        guard !duplicates.isEmpty else { return 0 }
+
+        var removedCount = 0
+        for (docId, shardIndices) in duplicates {
+            let keep = shardIndices.max()!
+            for si in shardIndices where si != keep {
+                table.shards[si].graph.remove(documentId: docId)
+                removedCount += 1
+            }
+        }
+
+        for i in table.shards.indices {
+            let records = table.shards[i].pendingWALRecords
+            table.shards[i].pendingWALRecords = []
+            records.forEach { try? wals[i]?.append($0) }
+        }
+        // Re-apply indices that Phase 5 may have written while we were suspended.
+        if let live = cache.snapshot {
+            for i in table.shards.indices where i < live.shards.count {
+                if table.shards[i].indices.isEmpty && !live.shards[i].indices.isEmpty {
+                    table.shards[i].indices = live.shards[i].indices
+                }
+            }
+        }
+        cache.update(table)
+        return removedCount
+    }
+
+    /// Compacts each shard independently and rewrites its vector file to match.
+    @discardableResult
+    func compact() async -> HNSWGraph.CompactionResult {
+        var table          = await loadedTable()
+        var anyChanged     = false
+        var aggregated     = HNSWGraph.CompactionResult.zero
+
+        for i in table.shards.indices {
+            let result = table.shards[i].compact()
+            guard result.removedNodes > 0 || result.demotedEmptyHubs > 0 else { continue }
+            vectorStore(for: i)?.rewrite(order: result.survivingVectorIndices)
+            table.shards[i].pendingWALRecords = []
+            aggregated.removedNodes          += result.removedNodes
+            aggregated.demotedEmptyHubs      += result.demotedEmptyHubs
+            aggregated.beforeNodes           += result.beforeNodes
+            aggregated.afterNodes            += result.afterNodes
+            aggregated.survivingVectorIndices = result.survivingVectorIndices  // last shard wins; OK for logging
+            anyChanged = true
+        }
+
+        if anyChanged {
+            // Re-apply indices from the live snapshot to avoid clobbering any indices
+            // that Phase 5 (mergeIndices) wrote to the cache while we were suspended
+            // at the `await loadedTable()` suspension point above.
+            if let live = cache.snapshot {
+                for i in table.shards.indices where i < live.shards.count {
+                    if table.shards[i].indices.isEmpty && !live.shards[i].indices.isEmpty {
+                        table.shards[i].indices = live.shards[i].indices
+                    }
+                }
+            }
+            cache.update(table)
+            checkpoint()
+        }
+        return aggregated
+    }
+
+    /// Replaces the entire in-memory cache and persists topology immediately.
+    func replace(with table: PartitionTable) {
+        cache.update(table)
+        tableDirty = false
+        flushTask?.cancel()
+        flushTask = nil
+        compactTask?.cancel()
+        compactTask = nil
+        checkpoint()
+        saveIndicesAsync(table)
+    }
+}
