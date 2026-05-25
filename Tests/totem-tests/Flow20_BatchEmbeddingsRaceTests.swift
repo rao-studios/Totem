@@ -33,11 +33,19 @@ final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
     // MARK: - Helpers
 
     private var tempDir: URL!
+    private var testApp: Application?
 
     override func setUpWithError() throws {
         tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("database-flow20-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    }
+
+    override func tearDown() async throws {
+        if let app = testApp {
+            try await app.asyncShutdown()
+            testApp = nil
+        }
     }
 
     override func tearDownWithError() throws {
@@ -48,8 +56,8 @@ final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
     /// Builds a minimal Vapor Application with just the batch embeddings route
     /// registered, backed by a real Database instance and MockEmbeddingProvider.
     /// Totem has no auth middleware — ownerId comes directly from the request body.
-    private func makeApp(database: Database) throws -> Application {
-        let app = Application(.testing)
+    private func makeApp(database: Database) async throws -> Application {
+        let app = try await Application.make(.testing)
         let mock = MockEmbeddingProvider()
         let protected = app.grouped(Middleware())
         registerBatchEmbeddingsRoute(
@@ -76,7 +84,7 @@ final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
     ) throws -> EmbeddingBatchResponse {
         let body: [String: Any] = [
             "inputs": texts,
-            "database": [
+            "totem": [
                 "owner_id": ownerId,
                 "group": ["id": groupId, "label": groupLabel, "owner_id": ownerId],
                 "scope": "personal"
@@ -115,8 +123,8 @@ final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
     ///  5. Assert group G2 exists and has tags derived from T.
     func testLinkOnlyPathPropagatesTagsToNewGroup() async throws {
         let database = await makeDatabase()
-        let app  = try makeApp(database: database)
-        defer { app.shutdown() }
+        testApp = try await makeApp(database: database)
+        let app = testApp!
 
         let ownerId     = "race-route-owner"
         let sharedTexts = ["loop quantum gravity gauge connection fiber bundle"]
@@ -165,8 +173,8 @@ final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
     /// This confirms the mock and test harness are working correctly.
     func testPreparedPathAlwaysProducesTags() async throws {
         let database = await makeDatabase()
-        let app  = try makeApp(database: database)
-        defer { app.shutdown() }
+        testApp = try await makeApp(database: database)
+        let app = testApp!
 
         let ownerId = "prepared-route-owner"
         let res = try embed(app: app, ownerId: ownerId,

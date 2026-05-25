@@ -21,7 +21,7 @@ final class Flow14_BatchEmbeddingGroupTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func wipeDatabasePersistenceFiles() {
+    private static func wipeDatabasePersistenceFiles() {
         let db = FilePersistence.getDefaultURL()
         for key in ["table", "registry", "sinatra/registry"] {
             try? FileManager.default.removeItem(at: db.appendingPathComponent(key))
@@ -37,10 +37,10 @@ final class Flow14_BatchEmbeddingGroupTests: XCTestCase {
     }
 
     private func makeDatabase() async -> Database {
-        wipeDatabasePersistenceFiles()
+        Self.wipeDatabasePersistenceFiles()
         let database = Database()
         await database.initializationTask.value
-        addTeardownBlock { self.wipeDatabasePersistenceFiles() }
+        addTeardownBlock { Flow14_BatchEmbeddingGroupTests.wipeDatabasePersistenceFiles() }
         return database
     }
 

@@ -433,16 +433,16 @@ final class Flow5_BatchIndexingTests: XCTestCase {
 
     func testTotemCacheLoadReturnsSeededValueWithoutDiskRead() async {
         let cache = TotemCache<TotemRegistry>(persistence: tempPersistence(key: "sc-load-seeded"))
-        cache.seed(.init())
 
-        var defaultFactoryCalled = false
-        _ = await cache.load {
-            defaultFactoryCalled = true
-            return TotemRegistry()
-        }
+        var seeded = TotemRegistry()
+        seeded.documentOwners["seeded-sentinel"] = [.init(id: "seeded-owner")]
+        cache.seed(seeded)
 
-        XCTAssertFalse(defaultFactoryCalled,
-            "load() must return the seeded value — defaultFactory must not be called when cache is seeded")
+        // Factory returns an empty registry; the seeded value must survive.
+        let result = await cache.load { TotemRegistry() }
+
+        XCTAssertNotNil(result.documentOwners["seeded-sentinel"],
+            "load() must return the seeded value — the default factory must not override it")
     }
 
     func testTotemCacheLoadColdStartReadsFromDisk() async {
@@ -465,15 +465,13 @@ final class Flow5_BatchIndexingTests: XCTestCase {
             persistence: tempPersistence(key: "sc-load-default-\(UUID().uuidString)")
         )
 
-        var defaultFactoryCalled = false
-        let loaded = await cache.load {
-            defaultFactoryCalled = true
-            return TotemRegistry()
-        }
+        var sentinelBuilder = TotemRegistry()
+        sentinelBuilder.documentOwners["factory-sentinel"] = [.init(id: "factory-owner")]
+        let sentinel = sentinelBuilder
+        let loaded = await cache.load { sentinel }
 
-        XCTAssertTrue(defaultFactoryCalled,
-            "load() must call defaultFactory when no file exists")
-        XCTAssertNotNil(loaded, "load() must always return a value")
+        XCTAssertNotNil(loaded.documentOwners["factory-sentinel"],
+            "load() must call and return defaultFactory's value when no file exists")
     }
 
     func testTotemCacheSnapshotUpdatedBeforeDiskFlush() {
