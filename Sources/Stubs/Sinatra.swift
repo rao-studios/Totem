@@ -3,10 +3,10 @@ import Logging
 
 /// Minimal Sinatra stub for Totem — all methods return identity (no adjustment).
 /// The full GBT/SVM ranking engine is not included; distances pass through unchanged.
-class Sinatra {
+class Sinatra: @unchecked Sendable {
     internal let logger: TotemLogger
 
-    static var sentimentContextLimit: Int = 4
+    nonisolated(unsafe) static var sentimentContextLimit: Int = 4
     static let maxParkedEntries: Int = 30
 
     init(logger: Logger) {

@@ -3,7 +3,6 @@ import GRPCCore
 import GRPCProtobuf
 import Logging
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 final class TotemQueryServiceImpl: Totem_V1_TotemQuery.SimpleServiceProtocol, Sendable {
     let database: Database
     let embeddingProvider: any EmbeddingProviding

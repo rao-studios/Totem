@@ -16,8 +16,8 @@ Totem owns no user sessions and no authentication — that is Seer's responsibil
 
 ## Prerequisites
 
-- Swift 5.10+ / Xcode 15+
-- macOS 14+
+- Swift 6.0+ / Xcode 15+
+- macOS 15+
 - A [Mistral API key](https://console.mistral.ai/) or Apple Silicon
 
 ## Setup

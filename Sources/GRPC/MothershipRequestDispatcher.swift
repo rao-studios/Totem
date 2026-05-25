@@ -2,17 +2,18 @@ import Foundation
 import GRPCCore
 import Logging
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 final class MothershipRequestDispatcher: Sendable {
     private let queryImpl: TotemQueryServiceImpl
     private let libraryImpl: TotemLibraryServiceImpl
     private let hnswImpl: TotemHNSWServiceImpl
+    private let updateImpl: TotemUpdateServiceImpl
     private let logger: Logger
 
     init(database: Database, embeddingProvider: any EmbeddingProviding, logger: Logger) {
         queryImpl   = TotemQueryServiceImpl(database: database, embeddingProvider: embeddingProvider)
         libraryImpl = TotemLibraryServiceImpl(database: database)
         hnswImpl    = TotemHNSWServiceImpl(database: database)
+        updateImpl  = TotemUpdateServiceImpl(database: database)
         self.logger = logger
     }
 
@@ -128,6 +129,33 @@ final class MothershipRequestDispatcher: Sendable {
             }
             logger.info("MothershipRequestDispatcher: [\(tag)] hnswDeleteNodeRequest — done, removed=\(r.removed)")
             response.payload = .hnswDeleteNodeResponse(r)
+
+        case .updateGroupRequest(let req):
+            logger.info("MothershipRequestDispatcher: [\(tag)] updateGroupRequest — group \(req.groupID)")
+            guard let r = try? await updateImpl.updateGroup(request: req, context: ctx) else {
+                logger.warning("MothershipRequestDispatcher: [\(tag)] updateGroupRequest — dispatch failed")
+                return nil
+            }
+            logger.info("MothershipRequestDispatcher: [\(tag)] updateGroupRequest — done, success=\(r.success)")
+            response.payload = .updateGroupResponse(r)
+
+        case .updateDocumentRequest(let req):
+            logger.info("MothershipRequestDispatcher: [\(tag)] updateDocumentRequest — doc \(req.documentID)")
+            guard let r = try? await updateImpl.updateDocument(request: req, context: ctx) else {
+                logger.warning("MothershipRequestDispatcher: [\(tag)] updateDocumentRequest — dispatch failed")
+                return nil
+            }
+            logger.info("MothershipRequestDispatcher: [\(tag)] updateDocumentRequest — done, success=\(r.success)")
+            response.payload = .updateDocumentResponse(r)
+
+        case .statsRequest(let req):
+            logger.info("MothershipRequestDispatcher: [\(tag)] statsRequest — fetching registry stats")
+            guard let r = try? await updateImpl.stats(request: req, context: ctx) else {
+                logger.warning("MothershipRequestDispatcher: [\(tag)] statsRequest — dispatch failed")
+                return nil
+            }
+            logger.info("MothershipRequestDispatcher: [\(tag)] statsRequest — docs=\(r.documentCount) groups=\(r.groupCount)")
+            response.payload = .statsResponse(r)
 
         default:
             logger.warning("MothershipRequestDispatcher: [\(tag)] unhandled payload type — ignoring")

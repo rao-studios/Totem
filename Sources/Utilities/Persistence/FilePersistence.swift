@@ -10,7 +10,7 @@ import Foundation
 import Logging
 
 /// FilePersistence is a basic document-file read-write utility class.
-final class FilePersistence : AnyPersistence {
+final class FilePersistence : AnyPersistence, @unchecked Sendable {
     
     let key : String
     

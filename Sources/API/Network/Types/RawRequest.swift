@@ -2,7 +2,7 @@ import Foundation
 
 protocol RawRequest : Encodable {
     associatedtype Response : Codable //TODO: rename to IntermediateResponse
-    associatedtype TransformedResponse : Codable //TODO: rename to Response
+    associatedtype TransformedResponse : Codable & Sendable //TODO: rename to Response
     
     var ignoresEndpoint : Bool { get }
     var ignoresAuthHeader : Bool { get }

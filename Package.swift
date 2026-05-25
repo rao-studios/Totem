@@ -1,4 +1,4 @@
-// swift-tools-version: 5.10.0
+// swift-tools-version: 6.0
 
 import PackageDescription
 
@@ -33,9 +33,15 @@ targetDependencies += [
 ]
 #endif
 
+#if os(Linux)
+let supportedPlatforms: [SupportedPlatform] = []
+#else
+let supportedPlatforms: [SupportedPlatform] = [.macOS(.v15)]
+#endif
+
 let package = Package(
   name: "totem",
-  platforms: [.macOS(.v14)],
+  platforms: supportedPlatforms,
   dependencies: packageDependencies,
   targets: [
     .executableTarget(

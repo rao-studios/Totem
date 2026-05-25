@@ -737,6 +737,54 @@ nonisolated struct Totem_V1_TotemSessionMessage: Sendable {
     set {payload = .hnswDeleteNodeResponse(newValue)}
   }
 
+  var updateGroupRequest: Totem_V1_TotemUpdateGroupRequest {
+    get {
+      if case .updateGroupRequest(let v)? = payload {return v}
+      return Totem_V1_TotemUpdateGroupRequest()
+    }
+    set {payload = .updateGroupRequest(newValue)}
+  }
+
+  var updateGroupResponse: Totem_V1_TotemUpdateGroupResponse {
+    get {
+      if case .updateGroupResponse(let v)? = payload {return v}
+      return Totem_V1_TotemUpdateGroupResponse()
+    }
+    set {payload = .updateGroupResponse(newValue)}
+  }
+
+  var updateDocumentRequest: Totem_V1_TotemUpdateDocumentRequest {
+    get {
+      if case .updateDocumentRequest(let v)? = payload {return v}
+      return Totem_V1_TotemUpdateDocumentRequest()
+    }
+    set {payload = .updateDocumentRequest(newValue)}
+  }
+
+  var updateDocumentResponse: Totem_V1_TotemUpdateDocumentResponse {
+    get {
+      if case .updateDocumentResponse(let v)? = payload {return v}
+      return Totem_V1_TotemUpdateDocumentResponse()
+    }
+    set {payload = .updateDocumentResponse(newValue)}
+  }
+
+  var statsRequest: Totem_V1_TotemStatsRequest {
+    get {
+      if case .statsRequest(let v)? = payload {return v}
+      return Totem_V1_TotemStatsRequest()
+    }
+    set {payload = .statsRequest(newValue)}
+  }
+
+  var statsResponse: Totem_V1_TotemStatsResponse {
+    get {
+      if case .statsResponse(let v)? = payload {return v}
+      return Totem_V1_TotemStatsResponse()
+    }
+    set {payload = .statsResponse(newValue)}
+  }
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   nonisolated enum OneOf_Payload: Equatable, Sendable {
@@ -760,9 +808,71 @@ nonisolated struct Totem_V1_TotemSessionMessage: Sendable {
     case hnswNodeResponse(Totem_V1_TotemHNSWNodeResponse)
     case hnswDeleteNodeRequest(Totem_V1_TotemHNSWDeleteNodeRequest)
     case hnswDeleteNodeResponse(Totem_V1_TotemHNSWDeleteNodeResponse)
+    case updateGroupRequest(Totem_V1_TotemUpdateGroupRequest)
+    case updateGroupResponse(Totem_V1_TotemUpdateGroupResponse)
+    case updateDocumentRequest(Totem_V1_TotemUpdateDocumentRequest)
+    case updateDocumentResponse(Totem_V1_TotemUpdateDocumentResponse)
+    case statsRequest(Totem_V1_TotemStatsRequest)
+    case statsResponse(Totem_V1_TotemStatsResponse)
 
   }
 
+  init() {}
+}
+
+nonisolated struct Totem_V1_TotemUpdateGroupRequest: Sendable {
+  var ownerID: String = String()
+  var groupID: String = String()
+  /// "available" | "restricted" | "" (no change)
+  var access: String = String()
+  /// "" = no change
+  var label: String = String()
+  /// only applied when updateMetadata = true
+  var groupDescription: String = String()
+  /// only applied when updateMetadata = true
+  var tags: [String] = []
+  /// when true, replaces description + tags
+  var updateMetadata: Bool = false
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+  init() {}
+}
+
+nonisolated struct Totem_V1_TotemUpdateGroupResponse: Sendable {
+  var success: Bool = false
+  var groupID: String = String()
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+  init() {}
+}
+
+nonisolated struct Totem_V1_TotemUpdateDocumentRequest: Sendable {
+  var ownerID: String = String()
+  var documentID: String = String()
+  /// "available" | "restricted" | "" (no change)
+  var access: String = String()
+  /// move to this group; "" = no change
+  var groupID: String = String()
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+  init() {}
+}
+
+nonisolated struct Totem_V1_TotemUpdateDocumentResponse: Sendable {
+  var success: Bool = false
+  var documentID: String = String()
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+  init() {}
+}
+
+nonisolated struct Totem_V1_TotemStatsRequest: Sendable {
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+  init() {}
+}
+
+nonisolated struct Totem_V1_TotemStatsResponse: Sendable {
+  var documentCount: Int64 = 0
+  var groupCount: Int64 = 0
+  var ownerCount: Int64 = 0
+  var availableDocumentCount: Int64 = 0
+  var unknownFields = SwiftProtobuf.UnknownStorage()
   init() {}
 }
 
@@ -2325,6 +2435,84 @@ nonisolated extension Totem_V1_TotemSessionMessage: SwiftProtobuf.Message, Swift
           self.payload = .hnswDeleteNodeResponse(v)
         }
       }()
+      case 23: try {
+        var v: Totem_V1_TotemUpdateGroupRequest?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .updateGroupRequest(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .updateGroupRequest(v)
+        }
+      }()
+      case 24: try {
+        var v: Totem_V1_TotemUpdateGroupResponse?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .updateGroupResponse(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .updateGroupResponse(v)
+        }
+      }()
+      case 25: try {
+        var v: Totem_V1_TotemUpdateDocumentRequest?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .updateDocumentRequest(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .updateDocumentRequest(v)
+        }
+      }()
+      case 26: try {
+        var v: Totem_V1_TotemUpdateDocumentResponse?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .updateDocumentResponse(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .updateDocumentResponse(v)
+        }
+      }()
+      case 27: try {
+        var v: Totem_V1_TotemStatsRequest?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .statsRequest(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .statsRequest(v)
+        }
+      }()
+      case 28: try {
+        var v: Totem_V1_TotemStatsResponse?
+        var hadOneofValue = false
+        if let current = self.payload {
+          hadOneofValue = true
+          if case .statsResponse(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.payload = .statsResponse(v)
+        }
+      }()
       default: break
       }
     }
@@ -2422,6 +2610,30 @@ nonisolated extension Totem_V1_TotemSessionMessage: SwiftProtobuf.Message, Swift
       guard case .hnswDeleteNodeResponse(let v)? = self.payload else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 22)
     }()
+    case .updateGroupRequest?: try {
+      guard case .updateGroupRequest(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 23)
+    }()
+    case .updateGroupResponse?: try {
+      guard case .updateGroupResponse(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 24)
+    }()
+    case .updateDocumentRequest?: try {
+      guard case .updateDocumentRequest(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 25)
+    }()
+    case .updateDocumentResponse?: try {
+      guard case .updateDocumentResponse(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 26)
+    }()
+    case .statsRequest?: try {
+      guard case .statsRequest(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 27)
+    }()
+    case .statsResponse?: try {
+      guard case .statsResponse(let v)? = self.payload else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 28)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -2469,6 +2681,191 @@ nonisolated extension Totem_V1_TotemSessionPong: SwiftProtobuf.Message, SwiftPro
   }
 
   static func ==(lhs: Totem_V1_TotemSessionPong, rhs: Totem_V1_TotemSessionPong) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Totem_V1_TotemUpdateGroupRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".TotemUpdateGroupRequest"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}group_id\0\u{1}access\0\u{1}label\0\u{5}group_description\0\u{1}tags\0\u{3}update_metadata\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.ownerID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.groupID) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.access) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.label) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.groupDescription) }()
+      case 6: try { try decoder.decodeRepeatedStringField(value: &self.tags) }()
+      case 7: try { try decoder.decodeSingularBoolField(value: &self.updateMetadata) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.ownerID.isEmpty { try visitor.visitSingularStringField(value: self.ownerID, fieldNumber: 1) }
+    if !self.groupID.isEmpty { try visitor.visitSingularStringField(value: self.groupID, fieldNumber: 2) }
+    if !self.access.isEmpty { try visitor.visitSingularStringField(value: self.access, fieldNumber: 3) }
+    if !self.label.isEmpty { try visitor.visitSingularStringField(value: self.label, fieldNumber: 4) }
+    if !self.groupDescription.isEmpty { try visitor.visitSingularStringField(value: self.groupDescription, fieldNumber: 5) }
+    if !self.tags.isEmpty { try visitor.visitRepeatedStringField(value: self.tags, fieldNumber: 6) }
+    if self.updateMetadata { try visitor.visitSingularBoolField(value: self.updateMetadata, fieldNumber: 7) }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Totem_V1_TotemUpdateGroupRequest, rhs: Totem_V1_TotemUpdateGroupRequest) -> Bool {
+    if lhs.ownerID != rhs.ownerID {return false}
+    if lhs.groupID != rhs.groupID {return false}
+    if lhs.access != rhs.access {return false}
+    if lhs.label != rhs.label {return false}
+    if lhs.groupDescription != rhs.groupDescription {return false}
+    if lhs.tags != rhs.tags {return false}
+    if lhs.updateMetadata != rhs.updateMetadata {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Totem_V1_TotemUpdateGroupResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".TotemUpdateGroupResponse"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}success\0\u{3}group_id\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBoolField(value: &self.success) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.groupID) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.success { try visitor.visitSingularBoolField(value: self.success, fieldNumber: 1) }
+    if !self.groupID.isEmpty { try visitor.visitSingularStringField(value: self.groupID, fieldNumber: 2) }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Totem_V1_TotemUpdateGroupResponse, rhs: Totem_V1_TotemUpdateGroupResponse) -> Bool {
+    if lhs.success != rhs.success {return false}
+    if lhs.groupID != rhs.groupID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Totem_V1_TotemUpdateDocumentRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".TotemUpdateDocumentRequest"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}document_id\0\u{1}access\0\u{3}group_id\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.ownerID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.documentID) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.access) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.groupID) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.ownerID.isEmpty { try visitor.visitSingularStringField(value: self.ownerID, fieldNumber: 1) }
+    if !self.documentID.isEmpty { try visitor.visitSingularStringField(value: self.documentID, fieldNumber: 2) }
+    if !self.access.isEmpty { try visitor.visitSingularStringField(value: self.access, fieldNumber: 3) }
+    if !self.groupID.isEmpty { try visitor.visitSingularStringField(value: self.groupID, fieldNumber: 4) }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Totem_V1_TotemUpdateDocumentRequest, rhs: Totem_V1_TotemUpdateDocumentRequest) -> Bool {
+    if lhs.ownerID != rhs.ownerID {return false}
+    if lhs.documentID != rhs.documentID {return false}
+    if lhs.access != rhs.access {return false}
+    if lhs.groupID != rhs.groupID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Totem_V1_TotemUpdateDocumentResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".TotemUpdateDocumentResponse"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}success\0\u{3}document_id\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBoolField(value: &self.success) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.documentID) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.success { try visitor.visitSingularBoolField(value: self.success, fieldNumber: 1) }
+    if !self.documentID.isEmpty { try visitor.visitSingularStringField(value: self.documentID, fieldNumber: 2) }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Totem_V1_TotemUpdateDocumentResponse, rhs: Totem_V1_TotemUpdateDocumentResponse) -> Bool {
+    if lhs.success != rhs.success {return false}
+    if lhs.documentID != rhs.documentID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Totem_V1_TotemStatsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".TotemStatsRequest"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Totem_V1_TotemStatsRequest, rhs: Totem_V1_TotemStatsRequest) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Totem_V1_TotemStatsResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".TotemStatsResponse"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{5}document_count\0\u{3}group_count\0\u{3}owner_count\0\u{9}available_document_count\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt64Field(value: &self.documentCount) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.groupCount) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self.ownerCount) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self.availableDocumentCount) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.documentCount != 0 { try visitor.visitSingularInt64Field(value: self.documentCount, fieldNumber: 1) }
+    if self.groupCount != 0 { try visitor.visitSingularInt64Field(value: self.groupCount, fieldNumber: 2) }
+    if self.ownerCount != 0 { try visitor.visitSingularInt64Field(value: self.ownerCount, fieldNumber: 3) }
+    if self.availableDocumentCount != 0 { try visitor.visitSingularInt64Field(value: self.availableDocumentCount, fieldNumber: 4) }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Totem_V1_TotemStatsResponse, rhs: Totem_V1_TotemStatsResponse) -> Bool {
+    if lhs.documentCount != rhs.documentCount {return false}
+    if lhs.groupCount != rhs.groupCount {return false}
+    if lhs.ownerCount != rhs.ownerCount {return false}
+    if lhs.availableDocumentCount != rhs.availableDocumentCount {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

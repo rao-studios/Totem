@@ -3,7 +3,6 @@ import GRPCCore
 import GRPCNIOTransportHTTP2
 import Logging
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 actor MothershipRegistrationClient {
     let mothershipHost: String
     let mothershipGRPCPort: Int
@@ -225,8 +224,14 @@ private func payloadName(_ payload: Totem_V1_TotemSessionMessage.OneOf_Payload?)
     case .hnswNodeBatchResponse: return "hnswNodeBatchResponse"
     case .hnswNodeRequest:       return "hnswNodeRequest"
     case .hnswNodeResponse:      return "hnswNodeResponse"
-    case .hnswDeleteNodeRequest:  return "hnswDeleteNodeRequest"
-    case .hnswDeleteNodeResponse: return "hnswDeleteNodeResponse"
-    case .none:                  return "none"
+    case .hnswDeleteNodeRequest:   return "hnswDeleteNodeRequest"
+    case .hnswDeleteNodeResponse:  return "hnswDeleteNodeResponse"
+    case .updateGroupRequest:      return "updateGroupRequest"
+    case .updateGroupResponse:     return "updateGroupResponse"
+    case .updateDocumentRequest:   return "updateDocumentRequest"
+    case .updateDocumentResponse:  return "updateDocumentResponse"
+    case .statsRequest:            return "statsRequest"
+    case .statsResponse:           return "statsResponse"
+    case .none:                    return "none"
     }
 }

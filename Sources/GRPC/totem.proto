@@ -43,6 +43,13 @@ service TotemQuery {
   rpc Remove (TotemRemoveRequest) returns (TotemRemoveResponse);
 }
 
+// ── Totem hosts this — Seer calls it to update groups/documents + fetch stats
+service TotemUpdate {
+  rpc UpdateGroup    (TotemUpdateGroupRequest)    returns (TotemUpdateGroupResponse);
+  rpc UpdateDocument (TotemUpdateDocumentRequest) returns (TotemUpdateDocumentResponse);
+  rpc Stats          (TotemStatsRequest)          returns (TotemStatsResponse);
+}
+
 message TotemSearchRequest {
   repeated float  query_embedding     = 1;
   repeated float  query_tag_embedding = 2;
@@ -99,6 +106,42 @@ message TotemRemoveRequest {
 message TotemRemoveResponse {
   bool  success       = 1;
   int32 removed_count = 2;
+}
+
+message TotemUpdateGroupRequest {
+  string owner_id          = 1;
+  string group_id          = 2;
+  string access            = 3;  // "available" | "restricted" | "" (no change)
+  string label             = 4;  // "" = no change
+  string group_description = 5;  // only applied when update_metadata = true
+  repeated string tags     = 6;  // only applied when update_metadata = true
+  bool update_metadata     = 7;  // when true, replaces description + tags
+}
+
+message TotemUpdateGroupResponse {
+  bool   success  = 1;
+  string group_id = 2;
+}
+
+message TotemUpdateDocumentRequest {
+  string owner_id    = 1;
+  string document_id = 2;
+  string access      = 3;   // "available" | "restricted" | "" (no change)
+  string group_id    = 4;   // move to this group; "" = no change
+}
+
+message TotemUpdateDocumentResponse {
+  bool   success     = 1;
+  string document_id = 2;
+}
+
+message TotemStatsRequest {}
+
+message TotemStatsResponse {
+  int64 document_count          = 1;
+  int64 group_count             = 2;
+  int64 owner_count             = 3;
+  int64 available_document_count = 4;
 }
 
 // ── Totem hosts this — Seer calls it for library fan-out ─────────────────────
@@ -252,6 +295,12 @@ message TotemSessionMessage {
     TotemHNSWNodeResponse        hnsw_node_response        = 20;
     TotemHNSWDeleteNodeRequest   hnsw_delete_node_request  = 21;
     TotemHNSWDeleteNodeResponse  hnsw_delete_node_response = 22;
+    TotemUpdateGroupRequest      update_group_request      = 23;
+    TotemUpdateGroupResponse     update_group_response     = 24;
+    TotemUpdateDocumentRequest   update_document_request   = 25;
+    TotemUpdateDocumentResponse  update_document_response  = 26;
+    TotemStatsRequest            stats_request             = 27;
+    TotemStatsResponse           stats_response            = 28;
   }
 }
 

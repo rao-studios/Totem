@@ -8,7 +8,7 @@ struct DatabaseConfig {
 actor Database {
     internal let logger: TotemLogger
     internal let baseLogger: Logger
-    internal let sinatra: Sinatra
+    nonisolated internal let sinatra: Sinatra
     internal let tableMutator: TableMutator
     internal let registryMutator: RegistryMutator
     let documentCache: DocumentCache
@@ -39,9 +39,9 @@ actor Database {
         self.tableMutator = TableMutator(nodeId: identity.nodeId, logger: TotemLogger(baseLogger),
                                          shardSizeThreshold: config.shardSizeThreshold)
         self.registryMutator = RegistryMutator(logger: TotemLogger(baseLogger))
-        self.initializeRegistry()
-        self.initializeTable()
-        self.initializationTask = Task { await self.initializeHNSW() }
+        self.initializationTask = Task { [self] in
+            await self.startup()
+        }
     }
 
     func shutdown() async {
@@ -53,6 +53,14 @@ actor Database {
         }
         await tableMutator.flushAllForShutdown()
         await registryMutator.flushForShutdown()
+    }
+}
+
+extension Database {
+    func startup() async {
+        initializeRegistry()
+        initializeTable()
+        await initializeHNSW()
     }
 }
 

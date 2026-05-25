@@ -5,21 +5,21 @@ import Foundation
 /// Global configuration for publisher debugging
 public struct PublisherDebugConfig {
     /// Enable/disable all debug logging
-    public static var isEnabled = false
-    
+    public nonisolated(unsafe) static var isEnabled = false
+
     /// Enable/disable specific component logging
-    public static var logAnyPublisher = true
-    public static var logAnySubscriber = true
-    public static var logSinkSubscriber = true
-    public static var logFlatMapSubscriber = true
-    public static var logJustPublisher = true
-    public static var logFuturePublisher = true
-    public static var logReceiveOnSubscriber = true
-    public static var logTryCatchSubscriber = true
-    public static var logSetFailureTypeSubscriber = true
-    
+    public nonisolated(unsafe) static var logAnyPublisher = true
+    public nonisolated(unsafe) static var logAnySubscriber = true
+    public nonisolated(unsafe) static var logSinkSubscriber = true
+    public nonisolated(unsafe) static var logFlatMapSubscriber = true
+    public nonisolated(unsafe) static var logJustPublisher = true
+    public nonisolated(unsafe) static var logFuturePublisher = true
+    public nonisolated(unsafe) static var logReceiveOnSubscriber = true
+    public nonisolated(unsafe) static var logTryCatchSubscriber = true
+    public nonisolated(unsafe) static var logSetFailureTypeSubscriber = true
+
     /// Log only values (reduces noise)
-    public static var logValues = true
+    public nonisolated(unsafe) static var logValues = true
     
     /// Helper to check if a specific log should print
     static func shouldLog(_ component: String) -> Bool {
@@ -54,7 +54,7 @@ public protocol Subscription: AnyObject {
 // MARK: - Cancellable
 
 /// Type-erased cancellable wrapper
-public final class AnyCancellable: Subscription {
+public final class AnyCancellable: Subscription, @unchecked Sendable {
     private var cancellationHandler: (() -> Void)?
     
     public init(_ cancel: @escaping () -> Void) {
@@ -87,7 +87,7 @@ public protocol Subscriber: AnyObject {
 
 public enum Subscribers {
     /// Demand for values
-    public struct Demand: Equatable {
+    public struct Demand: Equatable, Sendable {
         private let value: Int?
         
         private init(_ value: Int?) {

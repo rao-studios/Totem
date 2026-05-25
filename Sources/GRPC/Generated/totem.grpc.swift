@@ -14,7 +14,6 @@ import GRPCProtobuf
 // MARK: - totem.v1.TotemRegistration
 
 /// Namespace containing generated types for the "totem.v1.TotemRegistration" service.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 internal enum Totem_V1_TotemRegistration {
     /// Service descriptor for the "totem.v1.TotemRegistration" service.
     internal static let descriptor = GRPCCore.ServiceDescriptor(fullyQualifiedService: "totem.v1.TotemRegistration")
@@ -78,7 +77,6 @@ internal enum Totem_V1_TotemRegistration {
     }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension GRPCCore.ServiceDescriptor {
     /// Service descriptor for the "totem.v1.TotemRegistration" service.
     internal static let totem_v1_TotemRegistration = GRPCCore.ServiceDescriptor(fullyQualifiedService: "totem.v1.TotemRegistration")
@@ -86,7 +84,6 @@ extension GRPCCore.ServiceDescriptor {
 
 // MARK: totem.v1.TotemRegistration (server)
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemRegistration {
     /// Streaming variant of the service protocol for the "totem.v1.TotemRegistration" service.
     ///
@@ -314,7 +311,6 @@ extension Totem_V1_TotemRegistration {
 }
 
 // Default implementation of 'registerMethods(with:)'.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemRegistration.StreamingServiceProtocol {
     internal func registerMethods<Transport>(with router: inout GRPCCore.RPCRouter<Transport>) where Transport: GRPCCore.ServerTransport {
         router.registerHandler(
@@ -365,7 +361,6 @@ extension Totem_V1_TotemRegistration.StreamingServiceProtocol {
 }
 
 // Default implementation of streaming methods from 'StreamingServiceProtocol'.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemRegistration.ServiceProtocol {
     internal func register(
         request: GRPCCore.StreamingServerRequest<Totem_V1_RegisterRequest>,
@@ -402,7 +397,6 @@ extension Totem_V1_TotemRegistration.ServiceProtocol {
 }
 
 // Default implementation of methods from 'ServiceProtocol'.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemRegistration.SimpleServiceProtocol {
     internal func register(
         request: GRPCCore.ServerRequest<Totem_V1_RegisterRequest>,
@@ -463,7 +457,6 @@ extension Totem_V1_TotemRegistration.SimpleServiceProtocol {
 
 // MARK: totem.v1.TotemRegistration (client)
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemRegistration {
     /// Generated client protocol for the "totem.v1.TotemRegistration" service.
     ///
@@ -702,7 +695,6 @@ extension Totem_V1_TotemRegistration {
 }
 
 // Helpers providing default arguments to 'ClientProtocol' methods.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemRegistration.ClientProtocol {
     /// Call the "Register" method.
     ///
@@ -809,7 +801,6 @@ extension Totem_V1_TotemRegistration.ClientProtocol {
 }
 
 // Helpers providing sugared APIs for 'ClientProtocol' methods.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemRegistration.ClientProtocol {
     /// Call the "Register" method.
     ///
@@ -935,7 +926,6 @@ extension Totem_V1_TotemRegistration.ClientProtocol {
 // MARK: - totem.v1.TotemQuery
 
 /// Namespace containing generated types for the "totem.v1.TotemQuery" service.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 internal enum Totem_V1_TotemQuery {
     /// Service descriptor for the "totem.v1.TotemQuery" service.
     internal static let descriptor = GRPCCore.ServiceDescriptor(fullyQualifiedService: "totem.v1.TotemQuery")
@@ -986,7 +976,6 @@ internal enum Totem_V1_TotemQuery {
     }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension GRPCCore.ServiceDescriptor {
     /// Service descriptor for the "totem.v1.TotemQuery" service.
     internal static let totem_v1_TotemQuery = GRPCCore.ServiceDescriptor(fullyQualifiedService: "totem.v1.TotemQuery")
@@ -994,7 +983,6 @@ extension GRPCCore.ServiceDescriptor {
 
 // MARK: totem.v1.TotemQuery (server)
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemQuery {
     /// Streaming variant of the service protocol for the "totem.v1.TotemQuery" service.
     ///
@@ -1164,7 +1152,6 @@ extension Totem_V1_TotemQuery {
 }
 
 // Default implementation of 'registerMethods(with:)'.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemQuery.StreamingServiceProtocol {
     internal func registerMethods<Transport>(with router: inout GRPCCore.RPCRouter<Transport>) where Transport: GRPCCore.ServerTransport {
         router.registerHandler(
@@ -1204,7 +1191,6 @@ extension Totem_V1_TotemQuery.StreamingServiceProtocol {
 }
 
 // Default implementation of streaming methods from 'StreamingServiceProtocol'.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemQuery.ServiceProtocol {
     internal func search(
         request: GRPCCore.StreamingServerRequest<Totem_V1_TotemSearchRequest>,
@@ -1241,7 +1227,6 @@ extension Totem_V1_TotemQuery.ServiceProtocol {
 }
 
 // Default implementation of methods from 'ServiceProtocol'.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemQuery.SimpleServiceProtocol {
     internal func search(
         request: GRPCCore.ServerRequest<Totem_V1_TotemSearchRequest>,
@@ -1285,7 +1270,6 @@ extension Totem_V1_TotemQuery.SimpleServiceProtocol {
 
 // MARK: totem.v1.TotemQuery (client)
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemQuery {
     /// Generated client protocol for the "totem.v1.TotemQuery" service.
     ///
@@ -1467,7 +1451,6 @@ extension Totem_V1_TotemQuery {
 }
 
 // Helpers providing default arguments to 'ClientProtocol' methods.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemQuery.ClientProtocol {
     /// Call the "Search" method.
     ///
@@ -1546,7 +1529,6 @@ extension Totem_V1_TotemQuery.ClientProtocol {
 }
 
 // Helpers providing sugared APIs for 'ClientProtocol' methods.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemQuery.ClientProtocol {
     /// Call the "Search" method.
     ///
@@ -1639,7 +1621,6 @@ extension Totem_V1_TotemQuery.ClientProtocol {
 // MARK: - totem.v1.TotemLibrary
 
 /// Namespace containing generated types for the "totem.v1.TotemLibrary" service.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 internal enum Totem_V1_TotemLibrary {
     /// Service descriptor for the "totem.v1.TotemLibrary" service.
     internal static let descriptor = GRPCCore.ServiceDescriptor(fullyQualifiedService: "totem.v1.TotemLibrary")
@@ -1664,7 +1645,6 @@ internal enum Totem_V1_TotemLibrary {
     }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension GRPCCore.ServiceDescriptor {
     /// Service descriptor for the "totem.v1.TotemLibrary" service.
     internal static let totem_v1_TotemLibrary = GRPCCore.ServiceDescriptor(fullyQualifiedService: "totem.v1.TotemLibrary")
@@ -1672,7 +1652,6 @@ extension GRPCCore.ServiceDescriptor {
 
 // MARK: totem.v1.TotemLibrary (server)
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemLibrary {
     /// Streaming variant of the service protocol for the "totem.v1.TotemLibrary" service.
     ///
@@ -1758,7 +1737,6 @@ extension Totem_V1_TotemLibrary {
 }
 
 // Default implementation of 'registerMethods(with:)'.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemLibrary.StreamingServiceProtocol {
     internal func registerMethods<Transport>(with router: inout GRPCCore.RPCRouter<Transport>) where Transport: GRPCCore.ServerTransport {
         router.registerHandler(
@@ -1776,7 +1754,6 @@ extension Totem_V1_TotemLibrary.StreamingServiceProtocol {
 }
 
 // Default implementation of streaming methods from 'StreamingServiceProtocol'.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemLibrary.ServiceProtocol {
     internal func library(
         request: GRPCCore.StreamingServerRequest<Totem_V1_TotemLibraryRequest>,
@@ -1791,7 +1768,6 @@ extension Totem_V1_TotemLibrary.ServiceProtocol {
 }
 
 // Default implementation of methods from 'ServiceProtocol'.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemLibrary.SimpleServiceProtocol {
     internal func library(
         request: GRPCCore.ServerRequest<Totem_V1_TotemLibraryRequest>,
@@ -1809,7 +1785,6 @@ extension Totem_V1_TotemLibrary.SimpleServiceProtocol {
 
 // MARK: totem.v1.TotemLibrary (client)
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemLibrary {
     /// Generated client protocol for the "totem.v1.TotemLibrary" service.
     ///
@@ -1893,7 +1868,6 @@ extension Totem_V1_TotemLibrary {
 }
 
 // Helpers providing default arguments to 'ClientProtocol' methods.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemLibrary.ClientProtocol {
     /// Call the "Library" method.
     ///
@@ -1922,7 +1896,6 @@ extension Totem_V1_TotemLibrary.ClientProtocol {
 }
 
 // Helpers providing sugared APIs for 'ClientProtocol' methods.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemLibrary.ClientProtocol {
     /// Call the "Library" method.
     ///
@@ -1957,7 +1930,6 @@ extension Totem_V1_TotemLibrary.ClientProtocol {
 // MARK: - totem.v1.TotemHNSW
 
 /// Namespace containing generated types for the "totem.v1.TotemHNSW" service.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 internal enum Totem_V1_TotemHNSW {
     /// Service descriptor for the "totem.v1.TotemHNSW" service.
     internal static let descriptor = GRPCCore.ServiceDescriptor(fullyQualifiedService: "totem.v1.TotemHNSW")
@@ -2034,7 +2006,6 @@ internal enum Totem_V1_TotemHNSW {
     }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension GRPCCore.ServiceDescriptor {
     /// Service descriptor for the "totem.v1.TotemHNSW" service.
     internal static let totem_v1_TotemHNSW = GRPCCore.ServiceDescriptor(fullyQualifiedService: "totem.v1.TotemHNSW")
@@ -2042,7 +2013,6 @@ extension GRPCCore.ServiceDescriptor {
 
 // MARK: totem.v1.TotemHNSW (server)
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemHNSW {
     /// Streaming variant of the service protocol for the "totem.v1.TotemHNSW" service.
     ///
@@ -2296,7 +2266,6 @@ extension Totem_V1_TotemHNSW {
 }
 
 // Default implementation of 'registerMethods(with:)'.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemHNSW.StreamingServiceProtocol {
     internal func registerMethods<Transport>(with router: inout GRPCCore.RPCRouter<Transport>) where Transport: GRPCCore.ServerTransport {
         router.registerHandler(
@@ -2358,7 +2327,6 @@ extension Totem_V1_TotemHNSW.StreamingServiceProtocol {
 }
 
 // Default implementation of streaming methods from 'StreamingServiceProtocol'.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemHNSW.ServiceProtocol {
     internal func stats(
         request: GRPCCore.StreamingServerRequest<Totem_V1_TotemHNSWStatsRequest>,
@@ -2417,7 +2385,6 @@ extension Totem_V1_TotemHNSW.ServiceProtocol {
 }
 
 // Default implementation of methods from 'ServiceProtocol'.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemHNSW.SimpleServiceProtocol {
     internal func stats(
         request: GRPCCore.ServerRequest<Totem_V1_TotemHNSWStatsRequest>,
@@ -2487,7 +2454,6 @@ extension Totem_V1_TotemHNSW.SimpleServiceProtocol {
 
 // MARK: totem.v1.TotemHNSW (client)
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemHNSW {
     /// Generated client protocol for the "totem.v1.TotemHNSW" service.
     ///
@@ -2767,7 +2733,6 @@ extension Totem_V1_TotemHNSW {
 }
 
 // Helpers providing default arguments to 'ClientProtocol' methods.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemHNSW.ClientProtocol {
     /// Call the "Stats" method.
     ///
@@ -2896,7 +2861,6 @@ extension Totem_V1_TotemHNSW.ClientProtocol {
 }
 
 // Helpers providing sugared APIs for 'ClientProtocol' methods.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Totem_V1_TotemHNSW.ClientProtocol {
     /// Call the "Stats" method.
     ///

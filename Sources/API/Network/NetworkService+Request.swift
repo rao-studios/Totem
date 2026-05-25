@@ -218,7 +218,7 @@ extension NetworkService {
 
 // MARK: - Publisher Extension for Async Conversion
 
-extension Publisher {
+extension Publisher where Output: Sendable {
     /// Converts a publisher to an async sequence
     var values: AsyncThrowingStream<Output, Error> {
         AsyncThrowingStream { continuation in
