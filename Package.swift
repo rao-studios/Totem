@@ -33,11 +33,7 @@ targetDependencies += [
 ]
 #endif
 
-#if os(Linux)
-let supportedPlatforms: [SupportedPlatform] = []
-#else
 let supportedPlatforms: [SupportedPlatform] = [.macOS(.v15)]
-#endif
 
 let package = Package(
   name: "totem",

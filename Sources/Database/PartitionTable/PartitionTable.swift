@@ -629,18 +629,21 @@ struct PartitionTable: Codable {
             var rawLinearResults = [(PartitionSearchResult, SinatraAdjustment?)?](
                 repeating: nil, count: candidateArray.count
             )
+            let tableSnapshot = self
+            let sendableLoader = SendableValue(metadataLoader)
             rawLinearResults.withUnsafeMutableBufferPointer { buffer in
+                let sendableBuffer = SendableValue(buffer)
                 DispatchQueue.concurrentPerform(iterations: candidateArray.count) { i in
                     let id = candidateArray[i]
-                    guard let index = self.index(for: id) else { return }
-                    buffer[i] = index.search(
+                    guard let index = tableSnapshot.index(for: id) else { return }
+                    sendableBuffer.value[i] = index.search(
                         queryEmbedding: embedding,
                         k: k,
                         sinatra: sinatra,
                         sinatraRegistry: sinatraRegistry,
                         documentStats: registry.documentStats,
                         request: request,
-                        metadataLoader: metadataLoader,
+                        metadataLoader: sendableLoader.value,
                         logger: logger
                     )
                 }

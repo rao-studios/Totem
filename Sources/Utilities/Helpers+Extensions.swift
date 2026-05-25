@@ -26,6 +26,13 @@ func encodeSSE<T: Encodable>(response: T, logger: Logger) -> String? {
     }
 }
 
+// MARK: - Concurrency Helpers
+
+struct SendableValue<T>: @unchecked Sendable {
+    let value: T
+    init(_ value: T) { self.value = value }
+}
+
 // MARK: - Extensions
 
 extension Array {

@@ -721,7 +721,7 @@ private final class FlatMapSubscriber<Upstream, Downstream, Failure: Error, P: P
     }
 }
 
-private final class DelaySubscriber<Input, Failure: Error>: Subscriber {
+private final class DelaySubscriber<Input, Failure: Error>: Subscriber, @unchecked Sendable {
     private let downstream: AnySubscriber<Input, Failure>
     private let delay: TimeInterval
     private let queue: DispatchQueue
@@ -746,6 +746,7 @@ private final class DelaySubscriber<Input, Failure: Error>: Subscriber {
         }
         lock.unlock()
         
+        let sendableInput = SendableValue(input)
         queue.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self = self else { return }
             self.lock.lock()
@@ -754,11 +755,11 @@ private final class DelaySubscriber<Input, Failure: Error>: Subscriber {
                 return
             }
             self.lock.unlock()
-            _ = self.downstream.receive(input)
+            _ = self.downstream.receive(sendableInput.value)
         }
         return .unlimited
     }
-    
+
     func receive(completion: Subscribers.Completion<Failure>) {
         lock.lock()
         guard !isCompleted else {
@@ -767,9 +768,10 @@ private final class DelaySubscriber<Input, Failure: Error>: Subscriber {
         }
         isCompleted = true
         lock.unlock()
-        
+
+        let sendableCompletion = SendableValue(completion)
         queue.asyncAfter(deadline: .now() + delay) { [weak self] in
-            self?.downstream.receive(completion: completion)
+            self?.downstream.receive(completion: sendableCompletion.value)
         }
     }
 }
@@ -836,7 +838,7 @@ private final class TryCatchSubscriber<Input, UpstreamFailure: Error, P: Publish
     }
 }
 
-private final class ReceiveOnSubscriber<Input, Failure: Error>: Subscriber {
+private final class ReceiveOnSubscriber<Input, Failure: Error>: Subscriber, @unchecked Sendable {
     private let downstream: AnySubscriber<Input, Failure>
     private let queue: DispatchQueue
     private let debugID = UUID().uuidString.prefix(8)
@@ -871,15 +873,16 @@ private final class ReceiveOnSubscriber<Input, Failure: Error>: Subscriber {
             debugLog("ReceiveOn", String(debugID), "Already on main thread, forwarding synchronously")
             _ = self.downstream.receive(input)
         } else {
+            let sendableInput = SendableValue(input)
             queue.async {
                 debugLog("ReceiveOn", String(self.debugID), "On target queue, forwarding value")
-                _ = self.downstream.receive(input)
+                _ = self.downstream.receive(sendableInput.value)
             }
         }
-        
+
         return .unlimited
     }
-    
+
     func receive(completion: Subscribers.Completion<Failure>) {
         lock.lock()
         guard !isCompleted else {
@@ -889,17 +892,17 @@ private final class ReceiveOnSubscriber<Input, Failure: Error>: Subscriber {
         }
         isCompleted = true
         lock.unlock()
-        
+
         debugLog("ReceiveOn", String(debugID), "Received completion: \(completion), dispatching to queue")
-        
-        // Use sync if already on target queue, otherwise async
+
         if queue === DispatchQueue.main && Thread.isMainThread {
             debugLog("ReceiveOn", String(debugID), "Already on main thread, forwarding synchronously")
             self.downstream.receive(completion: completion)
         } else {
+            let sendableCompletion = SendableValue(completion)
             queue.async {
                 debugLog("ReceiveOn", String(self.debugID), "On target queue, forwarding completion")
-                self.downstream.receive(completion: completion)
+                self.downstream.receive(completion: sendableCompletion.value)
             }
         }
     }
