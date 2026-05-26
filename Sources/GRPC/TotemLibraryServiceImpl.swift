@@ -35,27 +35,33 @@ final class TotemLibraryServiceImpl: Totem_V1_TotemLibrary.SimpleServiceProtocol
             return resp
         }
 
-        // Standard path: full library fetch + cursor pagination
-        var groups = database.groups(for: request.ownerID)
+        // Standard path: slice on lightweight entries first, build documents only for the page
+        guard let registry = database.registry else {
+            return Totem_V1_TotemLibraryResponse()
+        }
+
+        var entries = database.groupEntries(for: request.ownerID)
         if request.includeAvailable {
-            let available = database.availableGroups()
-            var seen = Set(groups.map { $0.id })
-            for g in available where seen.insert(g.id).inserted {
-                groups.append(g)
+            let available = database.availableGroupEntries()
+            var seen = Set(entries.map { $0.id })
+            for e in available where seen.insert(e.id).inserted {
+                entries.append(e)
             }
         }
 
-        groups.sort { $0.id < $1.id }
+        entries.sort { $0.id < $1.id }
 
         if !request.afterID.isEmpty {
-            groups = groups.filter { $0.id > request.afterID }
+            entries = entries.filter { $0.id > request.afterID }
         }
 
         var hasMore = false
         if request.limit > 0 {
-            hasMore = groups.count > Int(request.limit)
-            groups = Array(groups.prefix(Int(request.limit)))
+            hasMore = entries.count > Int(request.limit)
+            entries = Array(entries.prefix(Int(request.limit)))
         }
+
+        let groups = entries.compactMap { database.buildGroup(entry: $0, registry: registry) }
 
         var resp = Totem_V1_TotemLibraryResponse()
         resp.hasMore_p = hasMore

@@ -127,6 +127,23 @@ extension Database {
             .compactMap { buildGroup(groupId: $0, registry: registry) }
     }
 
+    /// Returns lightweight group entries (documents NOT loaded) for the given owner.
+    /// Useful for pagination: apply cursor/limit to the entries, then buildGroup only on the page.
+    nonisolated func groupEntries(for ownerId: OwnerID) -> [Database.Group] {
+        guard let registry else { return [] }
+        let owner = TotemRegistry.Owner(id: ownerId)
+        return (registry.ownersGroups[owner] ?? []).filter { $0.ownerId == owner.id }
+    }
+
+    /// Returns lightweight group entries for all available (public) groups.
+    nonisolated func availableGroupEntries() -> [Database.Group] {
+        guard let registry else { return [] }
+        return registry.availableGroupIds.compactMap { id in
+            guard let owner = registry.groupOwners[id] else { return nil }
+            return registry.ownersGroups[owner]?.first { $0.id == id }
+        }
+    }
+
     func stats(for documentId: DocumentID) -> Database.DocumentStats? {
         registry?.documentStats[documentId]
     }
