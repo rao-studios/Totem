@@ -40,34 +40,79 @@ final class TotemLibraryServiceImpl: Totem_V1_TotemLibrary.SimpleServiceProtocol
             return Totem_V1_TotemLibraryResponse()
         }
 
-        var entries = database.groupEntries(for: request.ownerID)
-        if request.includeAvailable {
-            let available = database.availableGroupEntries()
-            var seen = Set(entries.map { $0.id })
-            for e in available where seen.insert(e.id).inserted {
-                entries.append(e)
+        let entries = database.groupEntries(for: request.ownerID)  // pre-sorted by ID
+        let cursor  = request.afterID
+        let limit   = request.limit > 0 ? Int(request.limit) : 0
+
+        // Binary search for the first entry past the cursor — O(log n).
+        var startIndex = 0
+        if !cursor.isEmpty {
+            var lo = 0, hi = entries.count
+            while lo < hi {
+                let mid = (lo + hi) / 2
+                if entries[mid].id <= cursor { lo = mid + 1 } else { hi = mid }
             }
+            startIndex = lo
         }
 
-        entries.sort { $0.id < $1.id }
+        let needed = limit > 0 ? limit + 1 : Int.max
 
-        if !request.afterID.isEmpty {
-            entries = entries.filter { $0.id > request.afterID }
+        var page: [Database.Group]
+        if request.includeAvailable {
+            // Deduplicate available entries against the sorted owner list via binary search
+            // (avoids a full Set<String> over all owner groups).
+            // Sort the small available slice, then lazy-merge with the owner slice.
+            let sortedAvailable = database.availableGroupEntries()
+                .filter { e in (cursor.isEmpty || e.id > cursor) && !binaryContains(entries, id: e.id) }
+                .sorted { $0.id < $1.id }
+            page = sortedMerge(entries, from: startIndex, available: sortedAvailable, limit: needed)
+        } else {
+            page = Array(entries[startIndex...].prefix(needed))
         }
 
         var hasMore = false
-        if request.limit > 0 {
-            hasMore = entries.count > Int(request.limit)
-            entries = Array(entries.prefix(Int(request.limit)))
+        if limit > 0 {
+            hasMore = page.count > limit
+            page = Array(page.prefix(limit))
         }
 
-        let groups = entries.compactMap { database.buildGroup(entry: $0, registry: registry) }
+        let groups = page.compactMap { database.buildGroup(entry: $0, registry: registry) }
 
         var resp = Totem_V1_TotemLibraryResponse()
         resp.hasMore_p = hasMore
         resp.groups = groups.map(toProto)
         return resp
     }
+}
+
+private func binaryContains(_ entries: [Database.Group], id: String) -> Bool {
+    var lo = 0, hi = entries.count
+    while lo < hi {
+        let mid = (lo + hi) / 2
+        if entries[mid].id < id { lo = mid + 1 }
+        else if entries[mid].id > id { hi = mid }
+        else { return true }
+    }
+    return false
+}
+
+private func sortedMerge(
+    _ owner: [Database.Group], from start: Int,
+    available: [Database.Group],
+    limit: Int
+) -> [Database.Group] {
+    var result: [Database.Group] = []
+    var oi = start, ai = 0
+    while result.count < limit {
+        let hasO = oi < owner.count, hasA = ai < available.count
+        guard hasO || hasA else { break }
+        if hasO && (!hasA || owner[oi].id < available[ai].id) {
+            result.append(owner[oi]); oi += 1
+        } else {
+            result.append(available[ai]); ai += 1
+        }
+    }
+    return result
 }
 
 private func toProto(_ g: Database.Group) -> Totem_V1_TotemGroup {

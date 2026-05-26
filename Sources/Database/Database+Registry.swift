@@ -73,6 +73,13 @@ extension Database {
             )
         }
 
+        // Enforce sorted invariant on load. Write paths maintain this order, so
+        // Timsort detects the existing runs in O(n) after the first startup.
+        // Keeping it here also self-heals registries restored from older backups.
+        for key in registry.ownersGroups.keys {
+            registry.ownersGroups[key]?.sort { $0.id < $1.id }
+        }
+
         registryMutator.seed(registry)
         documentCache.seed(initial)
         logger.debug(
@@ -139,8 +146,16 @@ extension Database {
     nonisolated func availableGroupEntries() -> [Database.Group] {
         guard let registry else { return [] }
         return registry.availableGroupIds.compactMap { id in
-            guard let owner = registry.groupOwners[id] else { return nil }
-            return registry.ownersGroups[owner]?.first { $0.id == id }
+            guard let owner = registry.groupOwners[id],
+                  let list = registry.ownersGroups[owner] else { return nil }
+            var lo = 0, hi = list.count
+            while lo < hi {
+                let mid = (lo + hi) / 2
+                if list[mid].id < id { lo = mid + 1 }
+                else if list[mid].id > id { hi = mid }
+                else { return list[mid] }
+            }
+            return nil
         }
     }
 

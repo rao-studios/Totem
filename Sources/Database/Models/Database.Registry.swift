@@ -208,8 +208,9 @@ extension TotemRegistry {
 
         var groupOwnersHashes = ownersGroups[owner] ?? []
         if !groupOwnersHashes.contains(where: { $0.id == groupId }) {
-            groupOwnersHashes.append(
-                .init(id: group.id, label: group.label, ownerId: ownerId, documents: [], metadata: group.metadata)
+            sortedGroupInsert(
+                .init(id: group.id, label: group.label, ownerId: ownerId, documents: [], metadata: group.metadata),
+                into: &groupOwnersHashes
             )
         }
         ownersGroups[owner] = groupOwnersHashes
@@ -323,6 +324,15 @@ extension TotemRegistry {
 
 // MARK: - Helpers
 
+private func sortedGroupInsert(_ group: Database.Group, into list: inout [Database.Group]) {
+    var lo = 0, hi = list.count
+    while lo < hi {
+        let mid = (lo + hi) / 2
+        if list[mid].id < group.id { lo = mid + 1 } else { hi = mid }
+    }
+    list.insert(group, at: lo)
+}
+
 extension TotemRegistry {
     /// Returns a `Database.Group` for a document using the first group in the Set index.
     /// Prefer `ownerDocumentGroup[ownerId]?[documentId]` for owner-scoped lookups.
@@ -378,9 +388,9 @@ extension TotemRegistry {
                     ownersGroups[owner] = ownerGroupList
                 }
             } else {
-                ownerGroupList.append(
-                    .init(id: g.id, label: g.label, ownerId: ownerId,
-                          documents: [], metadata: g.metadata)
+                sortedGroupInsert(
+                    .init(id: g.id, label: g.label, ownerId: ownerId, documents: [], metadata: g.metadata),
+                    into: &ownerGroupList
                 )
                 ownersGroups[owner] = ownerGroupList
             }

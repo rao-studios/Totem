@@ -381,8 +381,14 @@ actor RegistryMutator {
             registry.groupOwners[id] = owner
             registry.groupAccess[id] = group.access ?? .restricted
             var ownerGroups = registry.ownersGroups[owner] ?? []
-            ownerGroups.append(
-                .init(id: group.id, label: group.label, ownerId: group.ownerId, documents: [], metadata: group.metadata)
+            var lo = 0, hi = ownerGroups.count
+            while lo < hi {
+                let mid = (lo + hi) / 2
+                if ownerGroups[mid].id < group.id { lo = mid + 1 } else { hi = mid }
+            }
+            ownerGroups.insert(
+                .init(id: group.id, label: group.label, ownerId: group.ownerId, documents: [], metadata: group.metadata),
+                at: lo
             )
             registry.ownersGroups[owner] = ownerGroups
             logger.info("Registry", "New group detected, creating records.", service: .database)
