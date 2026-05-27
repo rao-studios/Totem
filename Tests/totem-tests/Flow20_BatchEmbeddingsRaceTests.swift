@@ -3,8 +3,8 @@
 //  database-serverTests
 //
 //  Tests the link-only simultaneous-request race condition in the batch
-//  embeddings route end-to-end using a real Vapor application, a real Database
-//  instance, and a MockEmbeddingProvider (no network calls).
+//  embeddings route end-to-end using a real Hummingbird application, a real
+//  Database instance, and a MockEmbeddingProvider (no network calls).
 //
 //  Race scenario
 //  ─────────────
@@ -24,8 +24,8 @@
 //
 
 import XCTest
-import Vapor
-import XCTVapor
+import Hummingbird
+import HummingbirdTesting
 @testable import totem
 
 final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
@@ -33,7 +33,6 @@ final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
     // MARK: - Helpers
 
     private var tempDir: URL!
-    private var testApp: Application?
 
     override func setUpWithError() throws {
         tempDir = FileManager.default.temporaryDirectory
@@ -41,30 +40,19 @@ final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     }
 
-    override func tearDown() async throws {
-        if let app = testApp {
-            try await app.asyncShutdown()
-            testApp = nil
-        }
-    }
-
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: tempDir)
         wipeTotemPersistenceFiles()
     }
 
-    /// Builds a minimal Vapor Application with just the batch embeddings route
-    /// registered, backed by a real Database instance and MockEmbeddingProvider.
+    /// Builds a minimal Hummingbird Application with just the batch embeddings
+    /// route registered, backed by a real Database instance and MockEmbeddingProvider.
     /// Totem has no auth middleware — ownerId comes directly from the request body.
-    private func makeApp(database: Database) async throws -> Application {
-        let app = try await Application.make(.testing)
+    private func makeApp(database: Database) -> Application<RouterResponder<TotemRequestContext>> {
+        let router = Router(context: TotemRequestContext.self)
         let mock = MockEmbeddingProvider()
-        let protected = app.grouped(Middleware())
-        registerBatchEmbeddingsRoute(
-            protected, database,
-            embeddingModelProvider: mock
-        )
-        return app
+        registerBatchEmbeddingsRoute(router, database, embeddingModelProvider: mock)
+        return Application(router: router)
     }
 
     private func makeDatabase() async -> Database {
@@ -74,14 +62,14 @@ final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
         return database
     }
 
-    /// Sends a POST to `v1/batch/embeddings` and returns the decoded response.
+    /// Sends a POST to `/v1/batch/embeddings` and returns the decoded response.
     private func embed(
-        app: Application,
+        app: some ApplicationProtocol,
         ownerId: String,
         groupId: String,
         groupLabel: String,
         texts: [String]
-    ) throws -> EmbeddingBatchResponse {
+    ) async throws -> EmbeddingBatchResponse {
         let body: [String: Any] = [
             "inputs": texts,
             "totem": [
@@ -92,19 +80,26 @@ final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
         ]
         let bodyData = try JSONSerialization.data(withJSONObject: body)
 
-        var response: EmbeddingBatchResponse?
-        try app.test(
-            .POST, "v1/batch/embeddings",
-            headers: [
-                "Content-Type": "application/json",
-                "X-Test-Owner-Id": ownerId
-            ],
-            body: ByteBuffer(data: bodyData)
-        ) { res in
-            XCTAssertEqual(res.status, .ok, "Route must return 200 OK")
-            response = try res.content.decode(EmbeddingBatchResponse.self)
+        // nonisolated(unsafe): written once inside the awaited test closure then
+        // immediately read after — sequentially ordered, no actual data race.
+        nonisolated(unsafe) var result: EmbeddingBatchResponse?
+        try await app.test(.live) { client in
+            let response = try await client.execute(
+                uri: "/v1/batch/embeddings",
+                method: .post,
+                headers: [.contentType: "application/json"],
+                body: ByteBuffer(data: bodyData)
+            )
+            XCTAssertEqual(response.status, .ok, "Route must return 200 OK")
+            // Hummingbird's responseEncoder uses .iso8601 for Date fields.
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            result = try decoder.decode(
+                EmbeddingBatchResponse.self,
+                from: Data(buffer: response.body)
+            )
         }
-        return response!
+        return result!
     }
 
     // =========================================================================
@@ -123,16 +118,15 @@ final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
     ///  5. Assert group G2 exists and has tags derived from T.
     func testLinkOnlyPathPropagatesTagsToNewGroup() async throws {
         let database = await makeDatabase()
-        testApp = try await makeApp(database: database)
-        let app = testApp!
+        let app = makeApp(database: database)
 
         let ownerId     = "race-route-owner"
         let sharedTexts = ["loop quantum gravity gauge connection fiber bundle"]
 
         // ── Request A: new document → prepared path ───────────────────────────
-        let resA = try embed(app: app, ownerId: ownerId,
-                             groupId: "race-group-a", groupLabel: "Group A",
-                             texts: sharedTexts)
+        let resA = try await embed(app: app, ownerId: ownerId,
+                                   groupId: "race-group-a", groupLabel: "Group A",
+                                   texts: sharedTexts)
         XCTAssertTrue(resA.success, "Request A must succeed")
 
         // Drain IndexQueue so the document is fully registered before B's Phase 1.
@@ -148,9 +142,9 @@ final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
         // ── Request B: same document → link-only path ─────────────────────────
         // The registry now has the document; Phase 1 will classify it as
         // link-only (exists + owner linked + only group-a linked → new group).
-        let resB = try embed(app: app, ownerId: ownerId,
-                             groupId: "race-group-b", groupLabel: "Group B",
-                             texts: sharedTexts)
+        let resB = try await embed(app: app, ownerId: ownerId,
+                                   groupId: "race-group-b", groupLabel: "Group B",
+                                   texts: sharedTexts)
         XCTAssertTrue(resB.success, "Request B must succeed")
 
         // Give linkOwnerBatch (background Task) time to execute.
@@ -173,13 +167,12 @@ final class Flow20_BatchEmbeddingsRaceTests: XCTestCase {
     /// This confirms the mock and test harness are working correctly.
     func testPreparedPathAlwaysProducesTags() async throws {
         let database = await makeDatabase()
-        testApp = try await makeApp(database: database)
-        let app = testApp!
+        let app = makeApp(database: database)
 
         let ownerId = "prepared-route-owner"
-        let res = try embed(app: app, ownerId: ownerId,
-                            groupId: "prepared-group", groupLabel: "Physics",
-                            texts: ["quantum field theory gauge boson interactions"])
+        let res = try await embed(app: app, ownerId: ownerId,
+                                  groupId: "prepared-group", groupLabel: "Physics",
+                                  texts: ["quantum field theory gauge boson interactions"])
         XCTAssertTrue(res.success, "Request must succeed")
         _ = await database.removeAll(ownerId: "barrier", request: .test())
 

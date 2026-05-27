@@ -1,5 +1,5 @@
 import Foundation
-import Vapor
+import Logging
 
 /// Actor-based network service for making HTTP requests
 actor NetworkService {

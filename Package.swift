@@ -4,7 +4,7 @@ import PackageDescription
 
 var packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/apple/swift-argument-parser.git", .upToNextMajor(from: "1.3.0")),
-    .package(url: "https://github.com/vapor/vapor.git", from: "4.0.0"),
+    .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
     .package(url: "https://github.com/apple/swift-crypto.git", from: "4.2.0"),
     .package(url: "https://github.com/grpc/grpc-swift.git", from: "2.0.0"),
     .package(url: "https://github.com/grpc/grpc-swift-nio-transport.git", from: "1.0.0"),
@@ -14,7 +14,7 @@ var packageDependencies: [Package.Dependency] = [
 
 var targetDependencies: [Target.Dependency] = [
     .product(name: "ArgumentParser", package: "swift-argument-parser"),
-    .product(name: "Vapor", package: "vapor"),
+    .product(name: "Hummingbird", package: "hummingbird"),
     .product(name: "Crypto", package: "swift-crypto"),
     .product(name: "GRPCCore", package: "grpc-swift"),
     .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
@@ -49,7 +49,7 @@ let package = Package(
       name: "totem-tests",
       dependencies: [
         "totem",
-        .product(name: "XCTVapor", package: "vapor"),
+        .product(name: "HummingbirdTesting", package: "hummingbird"),
       ],
       path: "Tests/totem-tests"
     )

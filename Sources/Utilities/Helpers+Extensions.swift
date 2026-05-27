@@ -2,7 +2,6 @@
 
 import Foundation
 import Logging
-import Vapor
 
 typealias BaseModel = Codable & Equatable
 

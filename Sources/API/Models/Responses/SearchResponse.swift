@@ -1,6 +1,6 @@
-import Vapor
+import Foundation
 
-struct SearchShardStat: Codable, Content {
+struct SearchShardStat: Codable {
     let shardIndex: Int
     let nodes: Int
     let maxLevel: Int
@@ -20,7 +20,7 @@ struct SearchShardStat: Codable, Content {
     }
 }
 
-struct SearchResponse: Content {
+struct SearchResponse: Codable {
     var object: String = "list"
     let texts: [String]
     let references: [Database.DocumentReference]

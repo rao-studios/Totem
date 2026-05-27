@@ -1,6 +1,6 @@
-import Vapor
+import Hummingbird
 
-private struct LibraryRequest: Content {
+private struct LibraryRequest: Codable {
     let ownerId: String
     let includeAvailable: Bool?
     enum CodingKeys: String, CodingKey {
@@ -9,20 +9,20 @@ private struct LibraryRequest: Content {
     }
 }
 
-private struct LibraryDocumentRequest: Content {
+private struct LibraryDocumentRequest: Codable {
     let documentId: String
     enum CodingKeys: String, CodingKey {
         case documentId = "document_id"
     }
 }
 
-struct LibraryResponse: Content {
+struct LibraryResponse: ResponseCodable {
     let groups: [Database.Group]
 }
 
-func registerLibraryRoute(_ app: RoutesBuilder, _ database: Database) {
-    app.post("v1", "library") { req async throws -> LibraryResponse in
-        let body = try req.content.decode(LibraryRequest.self)
+func registerLibraryRoute(_ app: some RouterMethods<TotemRequestContext>, _ database: Database) {
+    app.post("/v1/library") { request, context async throws -> LibraryResponse in
+        let body = try await request.decode(as: LibraryRequest.self, context: context)
         var groups = database.groups(for: body.ownerId)
         if body.includeAvailable == true {
             let available = database.availableGroups()
@@ -34,8 +34,8 @@ func registerLibraryRoute(_ app: RoutesBuilder, _ database: Database) {
         return LibraryResponse(groups: groups)
     }
 
-    app.post("v1", "library", "document") { req async throws -> LibraryResponse in
-        let body = try req.content.decode(LibraryDocumentRequest.self)
+    app.post("/v1/library/document") { request, context async throws -> LibraryResponse in
+        let body = try await request.decode(as: LibraryDocumentRequest.self, context: context)
         guard let registry = database.registry else {
             return LibraryResponse(groups: [])
         }

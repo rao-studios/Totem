@@ -1,6 +1,6 @@
-import Vapor
+import Hummingbird
 
-private struct AvailabilityRequest: Content {
+private struct AvailabilityRequest: Codable {
     let acceptingStorage: Bool
 
     enum CodingKeys: String, CodingKey {
@@ -8,16 +8,16 @@ private struct AvailabilityRequest: Content {
     }
 }
 
-private struct AvailabilityResponse: Content {
+private struct AvailabilityResponse: ResponseCodable {
     let accepted: Bool
 }
 
 func registerAvailabilityRoute(
-    _ app: RoutesBuilder,
+    _ app: some RouterMethods<TotemRequestContext>,
     registrationClient: MothershipRegistrationClient
 ) {
-    app.post("v1", "availability") { req async throws -> AvailabilityResponse in
-        let body = try req.content.decode(AvailabilityRequest.self)
+    app.post("/v1/availability") { request, context async throws -> AvailabilityResponse in
+        let body = try await request.decode(as: AvailabilityRequest.self, context: context)
         await registrationClient.sendAvailabilityUpdate(acceptingStorage: body.acceptingStorage)
         return AvailabilityResponse(accepted: true)
     }

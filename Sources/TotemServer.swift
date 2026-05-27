@@ -1,22 +1,18 @@
 import ArgumentParser
 import Foundation
 import Logging
-import Vapor
+import Hummingbird
 
-func configureRoutes(_ app: Application, _ database: Database, embeddingModelProvider: any EmbeddingProviding) async throws {
-    registerHealthRoute(app)
-    let protected = app.grouped(Middleware())
-    registerSearchRoute(protected, database, embeddingModelProvider: embeddingModelProvider)
-    registerBatchEmbeddingsRoute(protected, database, embeddingModelProvider: embeddingModelProvider)
-    registerLibraryRoute(protected, database)
-    registerHNSWRoutes(protected, database)
-}
-
-// Pass-through middleware — no auth in Totem; ownerId comes from the request body.
-struct Middleware: AsyncMiddleware {
-    func respond(to request: Request, chainingTo next: AsyncResponder) async throws -> Response {
-        try await next.respond(to: request)
-    }
+func configureRoutes(
+    _ router: Router<TotemRequestContext>,
+    _ database: Database,
+    embeddingModelProvider: any EmbeddingProviding
+) {
+    registerHealthRoute(router)
+    registerSearchRoute(router, database, embeddingModelProvider: embeddingModelProvider)
+    registerBatchEmbeddingsRoute(router, database, embeddingModelProvider: embeddingModelProvider)
+    registerLibraryRoute(router, database)
+    registerHNSWRoutes(router, database)
 }
 
 @main
@@ -56,27 +52,25 @@ struct TotemServer: AsyncParsableCommand {
 
     @MainActor
     func run() async throws {
-        let app = try await setupApplication()
-        app.logger.logLevel = .debug
+        let (router, app) = setupApplication()
 
         let fixedNodeId = nodeId.flatMap { UUID(uuidString: $0) }
         let database = Database(nodeId: fixedNodeId)
-        let embeddingModelProvider: any EmbeddingProviding = makeEmbeddingProvider(logger: app.logger)
+        let embeddingModelProvider: any EmbeddingProviding = makeEmbeddingProvider()
 
-        app.routes.defaultMaxBodySize = "100mb"
-        configureCORS(app)
-
-        try await configureRoutes(app, database, embeddingModelProvider: embeddingModelProvider)
+        configureRoutes(router, database, embeddingModelProvider: embeddingModelProvider)
 
         if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
             let grpcServer = TotemGRPCServer()
             await grpcServer.start(database: database, embeddingProvider: embeddingModelProvider, grpcPort: grpcPort)
 
             if !mothershipHost.isEmpty {
+                var logger = Logger(label: "totem")
+                logger.logLevel = .debug
                 let dispatcher = MothershipRequestDispatcher(
                     database: database,
                     embeddingProvider: embeddingModelProvider,
-                    logger: app.logger
+                    logger: logger
                 )
                 let client = MothershipRegistrationClient(
                     mothershipHost: mothershipHost,
@@ -86,26 +80,25 @@ struct TotemServer: AsyncParsableCommand {
                     totemGRPCPort: grpcPort,
                     totemHTTPPort: port,
                     requestDispatcher: dispatcher,
-                    logger: app.logger
+                    logger: logger
                 )
                 await client.startHeartbeatLoop()
-                let protected = app.grouped(Middleware())
-                registerAvailabilityRoute(protected, registrationClient: client)
+                registerAvailabilityRoute(router, registrationClient: client)
             }
         }
 
         do {
-            try await startServer(app)
+            try await app.runService()
         } catch {
             await database.shutdown()
-            try? await app.asyncShutdown()
             throw error
         }
         await database.shutdown()
-        try? await app.asyncShutdown()
     }
 
-    private func makeEmbeddingProvider(logger: Logger) -> any EmbeddingProviding {
+    private func makeEmbeddingProvider() -> any EmbeddingProviding {
+        var logger = Logger(label: "totem")
+        logger.logLevel = .debug
         #if canImport(MLX)
         if useMLX {
             logger.info("Embedding backend: MLX (\(mlxModel))")
@@ -116,26 +109,36 @@ struct TotemServer: AsyncParsableCommand {
         return EmbeddingModelProvider(logger: logger)
     }
 
-    private func setupApplication() async throws -> Application {
-        var env = Environment(name: "production", arguments: ["vapor"])
-        try LoggingSystem.bootstrap(from: &env)
-        return try await Application.make(env)
-    }
+    private func setupApplication() -> (Router<TotemRequestContext>, Application<RouterResponder<TotemRequestContext>>) {
+        LoggingSystem.bootstrap { label in
+            var handler = StreamLogHandler.standardOutput(label: label)
+            handler.logLevel = .debug
+            return handler
+        }
 
-    private func configureCORS(_ app: Application) {
-        let cors = CORSMiddleware.Configuration(
-            allowedOrigin: .all,
-            allowedMethods: [.GET, .POST, .OPTIONS],
-            allowedHeaders: [.accept, .authorization, .contentType, .origin, .xRequestedWith, .userAgent, .accessControlAllowOrigin]
+        var logger = Logger(label: "totem")
+        logger.logLevel = .debug
+
+        let router = Router(context: TotemRequestContext.self)
+
+        router.middlewares.add(CORSMiddleware(
+            allowOrigin: .all,
+            allowHeaders: [.accept, .authorization, .contentType, .origin],
+            allowMethods: [.get, .post, .options]
+        ))
+
+        let app = Application(
+            router: router,
+            configuration: .init(
+                address: .hostname(host, port: port),
+                serverName: "Totem"
+            ),
+            logger: logger
         )
-        app.middleware.use(CORSMiddleware(configuration: cors))
-    }
 
-    private func startServer(_ app: Application) async throws {
-        app.http.server.configuration.hostname = host
-        app.http.server.configuration.port = port
-        let logger = TotemLogger(app.logger)
-        logger.info("Startup", "Totem starting on http://\(host):\(port)", service: .startup)
-        try await app.execute()
+        let totemLogger = TotemLogger(logger)
+        totemLogger.info("Startup", "Totem starting on http://\(host):\(port)", service: .startup)
+
+        return (router, app)
     }
 }

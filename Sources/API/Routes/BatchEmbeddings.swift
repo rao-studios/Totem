@@ -1,4 +1,5 @@
-import Vapor
+import Foundation
+import Hummingbird
 
 private struct PreparedInput {
     let index: Int
@@ -22,21 +23,24 @@ private struct DocumentEmbed {
 }
 
 func registerBatchEmbeddingsRoute(
-    _ app: RoutesBuilder,
+    _ app: some RouterMethods<TotemRequestContext>,
     _ database: Database,
     embeddingModelProvider: some EmbeddingProviding
 ) {
-    app.post("v1", "batch", "embeddings") { req async throws -> EmbeddingBatchResponse in
-        let embeddingRequest = try req.content.decode(EmbeddingBatchRequest.self)
-        let databaseReq = try embeddingRequest.totem.from(req)
+    app.post("/v1/batch/embeddings") { request, context async throws -> EmbeddingBatchResponse in
+        let embeddingRequest = try await request.decode(as: EmbeddingBatchRequest.self, context: context)
+        let databaseReq = embeddingRequest.totem.withRequestID(context.id)
         let logger = database.logger
         let embeddingReqId = "emb-\(UUID().uuidString)"
         let modelName = "mistral-embed"
         let mediaType = embeddingRequest.mediaType ?? .text
 
+        // Remote address not available without RemoteAddressRequestContext; log "unknown" for now.
+        let ipAddress: String = "unknown"
+
         logger.info(
             "Batch Embedding",
-            "Received batch embedding request (ID: \(embeddingReqId)) for model: \(embeddingRequest.model ?? "Default") | group: \(embeddingRequest.totem.group?.id ?? "") | ip: \(req.remoteAddress?.ipAddress ?? "unknown")",
+            "Received batch embedding request (ID: \(embeddingReqId)) for model: \(embeddingRequest.model ?? "Default") | group: \(embeddingRequest.totem.group?.id ?? "") | ip: \(ipAddress)",
             service: .embedding
         )
 
@@ -178,7 +182,7 @@ func registerBatchEmbeddingsRoute(
             )
 
             let (allEmbeddings, usage) = try await embeddingModelProvider.run(
-                allToEmbed, logger: req.logger, priority: false
+                allToEmbed, logger: context.logger, priority: false
             )
             totalPromptTokens += usage.promptTokens
 

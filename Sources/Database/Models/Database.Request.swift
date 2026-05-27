@@ -1,7 +1,6 @@
 import Foundation
-import Vapor
 
-struct DatabaseRequest: Content, Codable {
+struct DatabaseRequest: Codable {
     let ownerId: String
     let group: Database.Group?
     let groups: [Database.Group]?
@@ -48,7 +47,8 @@ struct DatabaseRequest: Content, Codable {
     }
 
     /// In Totem there is no auth middleware — ownerId comes directly from the body.
-    func from(_ req: Request) throws -> DatabaseRequest {
+    /// Call this with the Hummingbird request context's id: `withRequestID(context.id)`
+    func withRequestID(_ id: String) -> DatabaseRequest {
         return .init(
             ownerId: self.ownerId.lowercased(),
             group: self.group,
@@ -56,7 +56,7 @@ struct DatabaseRequest: Content, Codable {
             tags: self.tags,
             aggregate: self.aggregate,
             scope: self.scope,
-            requestID: req.id
+            requestID: id
         )
     }
 }

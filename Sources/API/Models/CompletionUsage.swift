@@ -5,10 +5,9 @@
 //  Created by Ritesh Pakala on 10/26/25.
 //  Based on: https://github.com/mzbac/swift-mlx-server
 
-import Vapor
 import Foundation
 
-struct CompletionUsage: Content {
+struct CompletionUsage: Codable {
     let promptTokens: Int
     let completionTokens: Int
     let totalTokens: Int

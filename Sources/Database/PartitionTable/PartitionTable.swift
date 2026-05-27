@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import Vapor
 
 typealias PartitionSearchResult = (scores: [Float], partitions: [Database.Partition])
 
