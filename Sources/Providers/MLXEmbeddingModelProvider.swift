@@ -11,7 +11,8 @@ import mlx_embeddings
 actor MLXEmbeddingModelProvider: EmbeddingProviding {
     private let modelId: String
     private var loadedContainer: ModelContainer?
-    private let batchSize: Int
+
+    static let maxInputsPerBatch = 256
 
     // MARK: - Preprocessing slots (mirrors EmbeddingModelProvider)
 
@@ -19,12 +20,8 @@ actor MLXEmbeddingModelProvider: EmbeddingProviding {
     private var preprocessActiveCount = 0
     private var preprocessWaiters: [CheckedContinuation<Void, Never>] = []
 
-    init(
-        modelId: String = "mlx-community/snowflake-arctic-embed-m-v1.5",
-        batchSize: Int = 32
-    ) {
+    init(modelId: String = "mlx-community/snowflake-arctic-embed-m-v1.5") {
         self.modelId = modelId
-        self.batchSize = batchSize
     }
 
     // MARK: - EmbeddingProviding
@@ -35,15 +32,14 @@ actor MLXEmbeddingModelProvider: EmbeddingProviding {
         priority: Bool = false
     ) async throws -> (result: [EmbeddingData], usage: Requests.Embedding.Get.Result.Usage) {
         let container = try await loadedModel(logger: logger)
-        let localBatchSize = batchSize
 
         return await container.perform { model, tokenizer in
             var allData: [EmbeddingData] = []
             var promptTokens = 0
             var index = 0
 
-            for batchStart in stride(from: 0, to: texts.count, by: localBatchSize) {
-                let batchEnd = min(batchStart + localBatchSize, texts.count)
+            for batchStart in stride(from: 0, to: texts.count, by: Self.maxInputsPerBatch) {
+                let batchEnd = min(batchStart + Self.maxInputsPerBatch, texts.count)
                 let batch = Array(texts[batchStart..<batchEnd])
 
                 let tokenized = batch.map { tokenizer.encode(text: $0, addSpecialTokens: true) }

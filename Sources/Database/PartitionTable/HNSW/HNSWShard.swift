@@ -81,8 +81,6 @@ struct HNSWShard: Codable {
 
     mutating func add(partition: Database.Partition, efOverride: Int? = nil) { graph.add(partition: partition, efOverride: efOverride) }
     mutating func remove(documentId: String) { graph.remove(documentId: documentId) }
-    @discardableResult
-
     mutating func trainIfReady() { graph.trainIfReady() }
     mutating func addWithoutUpsert(_ partition: Database.Partition) { graph.addWithoutUpsert(partition) }
     mutating func apply(_ record: TopologyWALRecord) { graph.apply(record) }

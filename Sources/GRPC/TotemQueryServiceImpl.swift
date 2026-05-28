@@ -82,8 +82,9 @@ final class TotemQueryServiceImpl: Totem_V1_TotemQuery.SimpleServiceProtocol, Se
         let group: Database.Group? = request.groupID.isEmpty ? nil :
             Database.Group(id: request.groupID, label: request.groupLabel, ownerId: request.ownerID, documents: [])
 
+        let resolvedOwner = request.ownerID.isEmpty ? "\(database.nodeId.uuidString)-totem" : request.ownerID
         let databaseReq = DatabaseRequest(
-            ownerId: request.ownerID,
+            ownerId: resolvedOwner,
             group: group,
             scope: request.scope == "global" ? .global : .personal
         )
@@ -101,7 +102,7 @@ final class TotemQueryServiceImpl: Totem_V1_TotemQuery.SimpleServiceProtocol, Se
                 priority: false
             )
 
-            let fullCID = database.totemCID(localId: item.documentID)
+            let fullCID = item.documentID
             fullCIDs.append(fullCID)
 
             putItems.append(Database.BatchPutItem(

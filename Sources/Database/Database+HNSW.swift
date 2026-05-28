@@ -12,7 +12,7 @@ extension Database {
 
     func initializeHNSW() async {
         await self.deduplicateGlobalHNSW()
-        // await self.compactGlobalHNSW()
+        await self.compactGlobalHNSW()
     }
 
     // MARK: - Dedup
@@ -88,7 +88,7 @@ extension Database {
 
         await remove(documentId: documentId, ownerId: ownerId)
 
-        // await compactGlobalHNSW()
+        await compactGlobalHNSW()
     }
 }
 
