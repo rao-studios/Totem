@@ -104,7 +104,7 @@ actor MLXEmbeddingModelProvider: EmbeddingProviding {
         logger.info("Loading MLX embedding model: \(modelId)")
         let config    = ModelConfiguration(id: modelId)
         let container = try await loadModelContainer(configuration: config)
-        MLX.GPU.set(cacheLimit: 20 * 1_024 * 1_024)
+        MLX.Memory.cacheLimit = 20 * 1_024 * 1_024
         loadedContainer = container
         logger.info("MLX embedding model ready: \(modelId)")
         return container

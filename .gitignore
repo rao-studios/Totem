@@ -4,6 +4,7 @@
 
 .env
 .claude/
+.deb
 
 ## User settings
 xcuserdata/

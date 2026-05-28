@@ -26,7 +26,7 @@ Totem owns no user sessions and no authentication — that is Seer's responsibil
 export MISTRAL_API_KEY="your-key-here"
 ```
 
-### MLX (on-device, Apple Silicon)
+### MLX (on-device)
 
 No API key needed. Download the model from the Hub before starting the server:
 
@@ -37,6 +37,19 @@ hf download mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
 ```
 
 The model is cached in `~/.cache/huggingface/hub/` and loaded on first request when `--use-mlx` is set.
+
+**Apple Silicon** — standard `swift build -c release` picks up MLX automatically.
+
+**Linux / NVIDIA GPU** — requires CUDA 12.x, the cuDNN Frontend headers, and LAPACK. Build with:
+
+```bash
+export PATH=/usr/local/cuda/bin:${PATH}
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}
+export CUDA_ARCH=sm_86   # match your GPU compute capability
+SPM_CUDA=1 swift build -c release --jobs 2
+```
+
+The package is pinned to `riteshpakala/mlx-swift:gab/cuda1` which carries patches for CUDA 12.9 + GCC 13 half-precision math ambiguity, CUTLASS-free builds, and cuDNN Frontend include paths. See [Docs/MLX-CUDA-Linux.md](Docs/MLX-CUDA-Linux.md) for the full setup guide, dependency list, and patch notes.
 
 ## Build & Run
 
@@ -457,3 +470,11 @@ Detailed internals and operational docs live in [`Skills/`](Skills/SKILLS.md):
 | [Concurrency](Skills/Concurrency/README.md) | Database actor, RegistryMutator, TableMutator, caching primitives |
 | [Persistence](Skills/Persistence/README.md) | HNSWTopologyWAL, RegistryWAL, HNSWVectorStore (mmap), replay order |
 | [API](Skills/API/README.md) | HTTP routes in standalone mode, request/response shapes |
+
+## Docs
+
+Setup and operational guides:
+
+| Guide | Contents |
+|---|---|
+| [MLX on Linux / CUDA](Docs/MLX-CUDA-Linux.md) | Full CUDA build setup on Ubuntu 24.04 — dependencies, fork patches, CUDA arch selection, troubleshooting |

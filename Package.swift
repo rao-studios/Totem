@@ -10,6 +10,9 @@ var packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/grpc/grpc-swift-nio-transport.git", from: "1.0.0"),
     .package(url: "https://github.com/grpc/grpc-swift-protobuf.git", from: "1.0.0"),
     .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.28.0"),
+    .package(url: "https://github.com/riteshpakala/mlx-swift.git", branch: "gab/cuda1"),
+    .package(url: "https://github.com/riteshpakala/mlx.embeddings.git", branch: "main"),
+    .package(url: "https://github.com/riteshpakala/mlx-swift-lm", branch: "main"),
 ]
 
 var targetDependencies: [Target.Dependency] = [
@@ -20,18 +23,9 @@ var targetDependencies: [Target.Dependency] = [
     .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
     .product(name: "GRPCProtobuf", package: "grpc-swift-protobuf"),
     .product(name: "SwiftProtobuf", package: "swift-protobuf"),
-]
-
-#if os(macOS)
-packageDependencies += [
-    .package(url: "https://github.com/riteshpakala/mlx.embeddings.git", branch: "main"),
-    .package(url: "https://github.com/riteshpakala/mlx-swift-lm", branch: "main"),
-]
-targetDependencies += [
     .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
     .product(name: "mlx_embeddings", package: "mlx.embeddings"),
 ]
-#endif
 
 let supportedPlatforms: [SupportedPlatform] = [.macOS(.v15)]
 
