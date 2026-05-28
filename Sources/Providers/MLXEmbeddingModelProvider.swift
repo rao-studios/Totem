@@ -11,6 +11,7 @@ import mlx_embeddings
 actor MLXEmbeddingModelProvider: EmbeddingProviding {
     private let modelId: String
     private var loadedContainer: ModelContainer?
+    private var loadingTask: Task<ModelContainer, Error>?
 
     static let maxInputsPerBatch = 256
 
@@ -101,13 +102,28 @@ actor MLXEmbeddingModelProvider: EmbeddingProviding {
 
     private func loadedModel(logger: Logger) async throws -> ModelContainer {
         if let container = loadedContainer { return container }
+        if let task = loadingTask { return try await task.value }
+
         logger.info("Loading MLX embedding model: \(modelId)")
-        let config    = ModelConfiguration(id: modelId)
-        let container = try await loadModelContainer(configuration: config)
-        MLX.Memory.cacheLimit = 20 * 1_024 * 1_024
-        loadedContainer = container
-        logger.info("MLX embedding model ready: \(modelId)")
-        return container
+        let modelId = self.modelId
+        let task = Task<ModelContainer, Error> {
+            let config = ModelConfiguration(id: modelId)
+            let container = try await loadModelContainer(configuration: config)
+            return container
+        }
+        loadingTask = task
+
+        do {
+            let container = try await task.value
+            loadedContainer = container
+            loadingTask = nil
+            MLX.Memory.cacheLimit = 20 * 1_024 * 1_024
+            logger.info("MLX embedding model ready: \(modelId)")
+            return container
+        } catch {
+            loadingTask = nil
+            throw error
+        }
     }
 }
 #endif
