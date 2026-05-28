@@ -2,6 +2,11 @@ import ArgumentParser
 import Foundation
 import Logging
 import Hummingbird
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
 
 func configureRoutes(
     _ router: Router<TotemRequestContext>,
@@ -52,6 +57,9 @@ struct TotemServer: AsyncParsableCommand {
 
     @MainActor
     func run() async throws {
+        // ── Load .env before anything reads ProcessInfo.environment ──────────────
+        loadDotEnv()
+
         // ── Logging ──────────────────────────────────────────────────────────────
         LoggingSystem.bootstrap { label in
             var handler = StreamLogHandler.standardOutput(label: label)
@@ -121,6 +129,29 @@ struct TotemServer: AsyncParsableCommand {
             throw error
         }
         await database.shutdown()
+    }
+
+    /// Reads the `.env` file from the working directory and injects any
+    /// `KEY=VALUE` pairs into the process environment via `setenv`.
+    /// Existing OS-level env vars are never overwritten (overwrite flag = 0),
+    /// so a value already exported in the shell always wins.
+    /// Hummingbird has no built-in dotenv support unlike Vapor's
+    /// `Environment.dotenv()`; this replaces that functionality.
+    private func loadDotEnv() {
+        let path = FileManager.default.currentDirectoryPath + "/.env"
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return }
+        for line in content.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty,
+                  !trimmed.hasPrefix("#"),
+                  let eqRange = trimmed.range(of: "=") else { continue }
+            let key   = String(trimmed[..<eqRange.lowerBound])
+                            .trimmingCharacters(in: .whitespaces)
+            let value = String(trimmed[eqRange.upperBound...])
+                            .trimmingCharacters(in: .whitespaces)
+            guard !key.isEmpty else { continue }
+            setenv(key, value, 0) // 0 = don't overwrite an already-exported var
+        }
     }
 
     private func makeEmbeddingProvider() -> any EmbeddingProviding {

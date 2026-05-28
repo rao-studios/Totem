@@ -29,6 +29,12 @@ actor TableMutator {
 
     nonisolated(unsafe) private let indicesPersistence: FilePersistence
     private let indicesTotemLogger: TotemLogger
+    /// Serializes all shard-indices saves so concurrent `saveIndicesAsync()` calls
+    /// (from `scheduleSave`, `flushIndicesIfDirty`, `checkpoint`, `remove`, etc.)
+    /// never race on the same per-shard plist files. Racing writes caused
+    /// simultaneous `PropertyListEncoder` allocations (~500 KB × 59 shards × N tasks)
+    /// that triggered OOM crashes inside `data.write(to:options:.atomic)`.
+    private let indicesIO: IndicesPersistenceActor
 
     // MARK: - WAL (Phase 4 — one WAL file per shard)
     //
@@ -106,6 +112,7 @@ actor TableMutator {
         self.indicesPersistence = ip
         self.indicesTotemLogger  = logger
         self.logger = logger
+        self.indicesIO = IndicesPersistenceActor(nodeId: nodeId, logger: logger.base)
         // Open (or create) the WAL file for shard 0. Additional shards' WALs are opened
         // lazily in putBatch when those shards are spawned.
         let walURL = FilePersistence.getDefaultURL()
@@ -197,17 +204,14 @@ actor TableMutator {
     }
 
     private func saveIndicesAsync(_ table: PartitionTable) {
-        let shards    = table.shards
-        let nodeId    = self.nodeId
-        let baseLogger = indicesTotemLogger.base
-        Task.detached {
-            for i in shards.indices {
-                FilePersistence(
-                    key:    "shard-\(nodeId)-\(i)-indices",
-                    kind:   .basic,
-                    logger: baseLogger
-                ).save(state: shards[i].indices)
-            }
+        let shards = table.shards
+        Task.detached { [indicesIO] in
+            // `indicesIO` is an actor — this await serializes all concurrent callers so
+            // only one save runs at a time. Previously bare Task.detached calls from
+            // scheduleSave, flushIndicesIfDirty, checkpoint, remove, etc. would all
+            // spawn concurrently, each encoding ~500 KB × 59 shards simultaneously,
+            // causing OOM crashes inside FilePersistence.save → data.write(to:options:.atomic).
+            await indicesIO.save(shards: shards)
         }
     }
 
@@ -449,12 +453,23 @@ actor TableMutator {
 
     func putBatch(items: [(id: DocumentID, partitions: [Database.Partition], tags: [String], tagsEmbedding: [Float]?, metadata: Data?, request: DatabaseRequest)]) async {
         _ = await loadedTable()
-        var table = cache.snapshot ?? PartitionTable()
-        // Do not yield mid-batch. Yielding releases actor exclusivity, allowing a concurrent
-        // putBatch to start from the same stale cache snapshot and advance store.nodeCount.
-        // When this task resumes, its nodes.count no longer matches store.nodeCount, so
-        // subsequent nodes get a vectorIndex that doesn't correspond to their store slot.
+        // Process one document per actor turn.
+        //
+        // Old design held the actor exclusively for the entire batch — no await between
+        // items. For large documents (135 partitions × ~8 ms HNSW each = 1100 ms) this
+        // starved the cooperative thread pool for seconds, silencing all log output and
+        // blocking pending flush / checkpoint tasks.
+        //
+        // Safety: `Database.drain()` is strictly sequential — only one putBatch runs at
+        // a time from the Database actor. The only concurrent path is `tableMutator.put()`
+        // (single-doc). By reloading `cache.snapshot` at the top of each iteration we
+        // incorporate any interleaved single-doc puts, keeping `nodes.count` in sync with
+        // `store.nodeCount` before each `hnswInsert()`.
         for (id, partitions, tags, tagsEmbedding, metadata, request) in items {
+            // Reload from cache each iteration so nodes.count == store.nodeCount.
+            // Any single-doc put() that ran during the previous yield is now visible.
+            var table = cache.snapshot ?? PartitionTable()
+
             // Route to the oldest shard with physical capacity (post-compaction nodes.count
             // below threshold). Only spawn when every shard is genuinely full.
             let targetSI: Int
@@ -467,9 +482,16 @@ actor TableMutator {
             savePartitionData(documentId: id, partitions: partitions)
             table.put(id: id, partitions: partitions, tags: tags, tagsEmbedding: tagsEmbedding,
                       metadata: metadata, request: request, logger: logger, targetShard: targetSI)
+
+            // Drain WAL records incrementally (keeps per-yield write count small) and
+            // commit this document's state to the cache before releasing the actor.
+            scheduleSave(draining: &table)
+            cache.update(table)
+
+            // Yield the cooperative thread so flush tasks, checkpoints, and other
+            // actor work can interleave between documents.
+            await Task.yield()
         }
-        scheduleSave(draining: &table)
-        cache.update(table)
         scheduleIndicesSave()
         scheduleCompactIfNeeded()
     }
