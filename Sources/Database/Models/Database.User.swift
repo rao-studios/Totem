@@ -5,10 +5,10 @@
 //  Created by Ritesh Pakala Rao on 12/15/25.
 //
 
-import Vapor
+import Foundation
 
 extension Database {
-    struct User: Content, Codable {
+    struct User: Codable {
         var groups: [Database.Group]
     }
 }

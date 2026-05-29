@@ -6,13 +6,12 @@
 //
 
 import Foundation
-import Vapor
 
 // TODO: What differentiates this from ModifyRequest?
 /// A payload to manage metadata for updations. A necessary data object
 /// when updating documents or other data types. Maintaining data consistency
 /// with the clients.
-struct DatabaseUpdate: Content, Codable {
+struct DatabaseUpdate: Codable {
     // A documentId to update.
     let documentId: String
     // Update operation.

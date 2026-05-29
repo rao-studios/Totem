@@ -6,12 +6,11 @@
 //
 
 import Foundation
-import Vapor
 
 /// A Database group object that stores a list of documents relative
 /// to a group. Includes are media types in the future.
 extension Database {
-    struct Group: Content, Codable {
+    struct Group: Codable {
         var id: String
         var label: String
         var ownerId: String
@@ -71,7 +70,7 @@ extension Database.Group {
     /// Descriptive metadata an owner can attach to a group.
     /// Exposed via the leaderboard and search endpoints so external users
     /// can understand what a public group contains before querying it.
-    struct Metadata: Codable, Content {
+    struct Metadata: Codable {
         var description: String?
         var tags: [String]
 

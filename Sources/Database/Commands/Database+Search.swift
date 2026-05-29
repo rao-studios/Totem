@@ -1,5 +1,4 @@
 import Foundation
-import Vapor
 
 extension Database {
     nonisolated func search(_ queryData: [EmbeddingData],

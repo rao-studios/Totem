@@ -1,5 +1,4 @@
 import Foundation
-import Vapor
 
 extension NetworkService {
     enum BaseEndpoint: String, Codable {
@@ -18,7 +17,7 @@ extension NetworkService {
         }
     }
 
-    enum NetworkError: LocalizedError, AbortError {
+    enum NetworkError: LocalizedError {
         case invalidRequestUrl
         case invalidResponse
         case unauthorized
@@ -34,16 +33,6 @@ extension NetworkService {
             case .unauthorized:         return "Insufficient rights to perform the request."
             case .backend(let r):       return r.message
             case .noMockDataAvailable:  return "No mock data available."
-            }
-        }
-
-        var status: HTTPResponseStatus {
-            switch self {
-            case .invalidRequestUrl:    return .badRequest
-            case .invalidResponse:      return .internalServerError
-            case .unauthorized:         return .unauthorized
-            case .backend:              return .badGateway
-            case .noMockDataAvailable:  return .notFound
             }
         }
     }

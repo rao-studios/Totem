@@ -1,4 +1,5 @@
-import Vapor
+import Foundation
+import Hummingbird
 
 private struct PreparedInput {
     let index: Int
@@ -22,21 +23,27 @@ private struct DocumentEmbed {
 }
 
 func registerBatchEmbeddingsRoute(
-    _ app: RoutesBuilder,
+    _ app: some RouterMethods<TotemRequestContext>,
     _ database: Database,
     embeddingModelProvider: some EmbeddingProviding
 ) {
-    app.post("v1", "batch", "embeddings") { req async throws -> EmbeddingBatchResponse in
-        let embeddingRequest = try req.content.decode(EmbeddingBatchRequest.self)
-        let databaseReq = try embeddingRequest.totem.from(req)
+    app.post("/v1/batch/embeddings") { request, context async throws -> EmbeddingBatchResponse in
+        let embeddingRequest = try await request.decode(as: EmbeddingBatchRequest.self, context: context)
+        let baseReq = embeddingRequest.totem.withRequestID(context.id)
+        let databaseReq: DatabaseRequest = baseReq.ownerId.isEmpty
+            ? DatabaseRequest(ownerId: "\(database.nodeId.uuidString)-totem", group: baseReq.group, groups: baseReq.groups, tags: baseReq.tags, aggregate: baseReq.aggregate, scope: baseReq.scope, requestID: baseReq.requestID)
+            : baseReq
         let logger = database.logger
         let embeddingReqId = "emb-\(UUID().uuidString)"
         let modelName = "mistral-embed"
         let mediaType = embeddingRequest.mediaType ?? .text
 
+        // Remote address not available without RemoteAddressRequestContext; log "unknown" for now.
+        let ipAddress: String = "unknown"
+
         logger.info(
             "Batch Embedding",
-            "Received batch embedding request (ID: \(embeddingReqId)) for model: \(embeddingRequest.model ?? "Default") | group: \(embeddingRequest.totem.group?.id ?? "") | ip: \(req.remoteAddress?.ipAddress ?? "unknown")",
+            "Received batch embedding request (ID: \(embeddingReqId)) for model: \(embeddingRequest.model ?? "Default") | group: \(embeddingRequest.totem.group?.id ?? "") | ip: \(ipAddress)",
             service: .embedding
         )
 
@@ -72,19 +79,25 @@ func registerBatchEmbeddingsRoute(
                         return (idx, nil, nil, false)
                     }
 
-                    let documentId = database.totemCID(localId: database.computeHash(from: texts))
-                    if let registry = database.registry,
-                       registry.doesDocumentExist(documentId) {
-                        if !registry.isOwnerLinked(documentId, ownerId: ownerId) {
-                            logger.info("Batch Embedding", "Document exists, linking new owner (ID: \(embeddingReqId))", service: .embedding)
+                    let documentId = database.computeHash(from: texts)
+                    // Partition table is the single source of truth for "is this document indexed."
+                    // registry.doesDocumentExist is NOT used as the skip gate — it can be true
+                    // for tombstoned documents (crash victims whose PQ index was lost before the
+                    // indices flush), permanently preventing re-indexing under the old check.
+                    // table.keys only contains a document after both HNSW nodes and PQ index are
+                    // stored (PartitionTable.put inserts keys AFTER indices), so this check is
+                    // atomic with respect to a complete, valid index entry.
+                    if database.table?.keys.contains(documentId) == true {
+                        let registry = database.registry
+                        let ownerLinked = registry?.isOwnerLinked(documentId, ownerId: ownerId) ?? true
+                        let groupLinked = requestedGroupId.flatMap { gid in
+                            registry.map { ($0.documentGroups[documentId]?.contains(gid)) ?? false }
+                        } ?? true
+                        if !ownerLinked || !groupLinked {
+                            logger.info("Batch Embedding", "Document indexed, linking owner/group (ID: \(embeddingReqId))", service: .embedding)
                             return (idx, texts, documentId, true)
                         }
-                        if let gid = requestedGroupId,
-                           !(registry.documentGroups[documentId]?.contains(gid) ?? false) {
-                            logger.info("Batch Embedding", "Document exists, linking to new group (ID: \(embeddingReqId))", service: .embedding)
-                            return (idx, texts, documentId, true)
-                        }
-                        logger.info("Batch Embedding", "Document exists, skipping (ID: \(embeddingReqId))", service: .embedding)
+                        logger.info("Batch Embedding", "Document indexed, skipping (ID: \(embeddingReqId))", service: .embedding)
                         return (idx, nil, documentId, false)
                     }
                     return (idx, texts, documentId, false)
@@ -178,7 +191,7 @@ func registerBatchEmbeddingsRoute(
             )
 
             let (allEmbeddings, usage) = try await embeddingModelProvider.run(
-                allToEmbed, logger: req.logger, priority: false
+                allToEmbed, logger: context.logger, priority: false
             )
             totalPromptTokens += usage.promptTokens
 

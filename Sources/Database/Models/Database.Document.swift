@@ -6,12 +6,11 @@
 //
 
 import Foundation
-import Vapor
 
 /// Base document object for text-embeddings stored on the
 /// Database network.
 extension Database {
-    struct Document: Content, Codable {
+    struct Document: Codable {
         var id: String
         var url: URL
 
@@ -50,7 +49,7 @@ extension Database {
         }
     }
     
-    struct DocumentReference: Codable, Content {
+    struct DocumentReference: Codable {
         var id: String
         var partitionId: String
         var ownerId: String

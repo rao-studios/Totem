@@ -5,9 +5,9 @@
 //  Created by Ritesh Pakala on 11/1/25.
 //
 
-import Vapor
+import Foundation
 
-struct SearchRequest: Content {
+struct SearchRequest: Codable {
     let model: String?
     let query: String
     let train: Bool

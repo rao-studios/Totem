@@ -5,9 +5,9 @@
 //  Created by Ritesh Pakala on 10/26/25.
 //  Based on: https://github.com/mzbac/swift-mlx-server
 
-import Vapor
+import Foundation
 
-struct EmbeddingResponse: Content {
+struct EmbeddingResponse: Codable {
     var object: String = "list"
     // let data: [EmbeddingData]
     let model: String
@@ -17,7 +17,7 @@ struct EmbeddingResponse: Content {
     let success: Bool
 }
 
-struct EmbeddingBatchResponse: Content {
+struct EmbeddingBatchResponse: Codable {
     var object: String = "list"
     let model: String
     let usage: UsageData
@@ -25,7 +25,7 @@ struct EmbeddingBatchResponse: Content {
     let user: Database.User?
 }
 
-struct EmbeddingData: Content {
+struct EmbeddingData: Codable {
     var object: String = "embedding"
     let embedding: EmbeddingOutput
     let index: Int
@@ -60,10 +60,10 @@ enum EmbeddingOutput: Codable {
     }
 }
 
-struct UsageData: Content {
+struct UsageData: Codable {
     let prompt_tokens: Int
     let total_tokens: Int
-    
+
     static var empty: UsageData {
         .init(prompt_tokens: 0, total_tokens: 0)
     }

@@ -1,6 +1,6 @@
-import Vapor
+import Foundation
 
-struct HNSWRequest: Content {
+struct HNSWRequest: Codable {
     let seer: DatabaseRequest
     let shardIndex: Int?
     let documentId: String?

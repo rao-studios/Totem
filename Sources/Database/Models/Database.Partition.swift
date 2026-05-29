@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import Vapor
 
 /// Database Partitions, they are basically chunks of a document. That
 /// are stored in an index in relation to a document for searching.

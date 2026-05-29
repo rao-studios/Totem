@@ -5,9 +5,9 @@
 //  Created by Ritesh Pakala on 10/26/25.
 //  Based on: https://github.com/mzbac/swift-mlx-server
 
-import Vapor
+import Foundation
 
-struct EmbeddingRequest: Content, Codable {
+struct EmbeddingRequest: Codable {
     let input: EmbeddingInput
     let model: String?
     let encodingFormat: String?
@@ -37,7 +37,7 @@ struct EmbeddingRequest: Content, Codable {
     }
 }
 
-struct EmbeddingBatchRequest: Content, Codable {
+struct EmbeddingBatchRequest: Codable {
     let inputs: [EmbeddingInput]
     let model: String?
     let encodingFormat: String?

@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import Vapor
 
 // See Sinatra, which generates a Database Tone.
 
@@ -24,7 +23,7 @@ extension Database {
     /// Where the summary is run through a sentiment analyzer, maybe a custom one
     /// that maps to certain attributes that impacts the search function of partitions
     /// in the `Partition.Index`.
-    struct Tone: Content {
+    struct Tone: Codable {
         
     }
 }

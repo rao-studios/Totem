@@ -1,5 +1,5 @@
 import Foundation
-import Vapor
+import Hummingbird
 
 // MARK: - Private helpers
 
@@ -103,10 +103,10 @@ private let emptyGraph = HNSWGraphResponse(nodes: [], totalNodes: 0, liveNodes: 
 
 // MARK: - Route registration
 
-func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
+func registerHNSWRoutes(_ app: some RouterMethods<TotemRequestContext>, _ database: Database) {
     // POST /v1/hnsw/stats — this Totem's contribution to the fleet-wide aggregate
-    app.post("v1", "hnsw", "stats") { req async throws -> HNSWStatsResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/stats") { request, context async throws -> HNSWStatsResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let ownerId = body.seer.ownerId
         let table = database.table ?? PartitionTable()
         let ownerDocIds = Set(database.registry?.ownersDocuments[.init(id: ownerId)] ?? [])
@@ -114,8 +114,8 @@ func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
     }
 
     // POST /v1/hnsw/document/stats — stats for a specific document on this Totem
-    app.post("v1", "hnsw", "document", "stats") { req async throws -> HNSWStatsResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/document/stats") { request, context async throws -> HNSWStatsResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let docId = body.documentId ?? ""
         let table = database.table ?? PartitionTable()
         var liveNodes = 0, maxLevel = 0, isTrained = false
@@ -131,8 +131,8 @@ func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
     }
 
     // POST /v1/hnsw/personal/stats — owner's live-node count on this Totem
-    app.post("v1", "hnsw", "personal", "stats") { req async throws -> HNSWStatsResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/personal/stats") { request, context async throws -> HNSWStatsResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let ownerId = body.seer.ownerId
         let table = database.table ?? PartitionTable()
         let ownerDocIds = Set(database.registry?.ownersDocuments[.init(id: ownerId)] ?? [])
@@ -140,8 +140,8 @@ func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
     }
 
     // POST /v1/hnsw/personal — all HNSW nodes for owner's documents (optional shard filter)
-    app.post("v1", "hnsw", "personal") { req async throws -> HNSWGraphResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/personal") { request, context async throws -> HNSWGraphResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let ownerId = body.seer.ownerId
         let ownerDocIds = Set(database.registry?.ownersDocuments[.init(id: ownerId)] ?? [])
         guard let table = database.table else { return emptyGraph }
@@ -151,8 +151,8 @@ func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
     }
 
     // POST /v1/hnsw/personal/document — nodes for a single document owned by this user
-    app.post("v1", "hnsw", "personal", "document") { req async throws -> HNSWGraphResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/personal/document") { request, context async throws -> HNSWGraphResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let ownerId = body.seer.ownerId
         let docId = body.documentId ?? ""
         let ownerDocIds = Set(database.registry?.ownersDocuments[.init(id: ownerId)] ?? [])
@@ -163,8 +163,8 @@ func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
     }
 
     // POST /v1/hnsw/personal/documents — nodes for a set of documents owned by this user
-    app.post("v1", "hnsw", "personal", "documents") { req async throws -> HNSWGraphResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/personal/documents") { request, context async throws -> HNSWGraphResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let ownerId = body.seer.ownerId
         let ownerDocIds = Set(database.registry?.ownersDocuments[.init(id: ownerId)] ?? [])
         let targetIds = ownerDocIds.intersection(body.documentIds ?? [])
@@ -175,8 +175,8 @@ func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
     }
 
     // POST /v1/hnsw/personal/hubs — owner's nodes at level > 0
-    app.post("v1", "hnsw", "personal", "hubs") { req async throws -> HNSWGraphResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/personal/hubs") { request, context async throws -> HNSWGraphResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let ownerId = body.seer.ownerId
         let ownerDocIds = Set(database.registry?.ownersDocuments[.init(id: ownerId)] ?? [])
         guard let table = database.table else { return emptyGraph }
@@ -186,8 +186,8 @@ func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
     }
 
     // POST /v1/hnsw/global — all live nodes visible to owner (owned + globally available)
-    app.post("v1", "hnsw", "global") { req async throws -> HNSWGraphResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/global") { request, context async throws -> HNSWGraphResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let ownerId = body.seer.ownerId
         let registry = database.registry
         let ownerDocIds = Set(registry?.ownersDocuments[.init(id: ownerId)] ?? [])
@@ -199,8 +199,8 @@ func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
     }
 
     // POST /v1/hnsw/global/hubs — visible hub nodes (level > 0)
-    app.post("v1", "hnsw", "global", "hubs") { req async throws -> HNSWGraphResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/global/hubs") { request, context async throws -> HNSWGraphResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let ownerId = body.seer.ownerId
         let registry = database.registry
         let ownerDocIds = Set(registry?.ownersDocuments[.init(id: ownerId)] ?? [])
@@ -212,8 +212,8 @@ func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
     }
 
     // POST /v1/hnsw/documents — nodes for given documentIds (cross-owner)
-    app.post("v1", "hnsw", "documents") { req async throws -> HNSWGraphResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/documents") { request, context async throws -> HNSWGraphResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let targetIds = Set(body.documentIds ?? [])
         guard let table = database.table, !targetIds.isEmpty else { return emptyGraph }
         return buildGraphResponse(table: table, shardIndexFilter: body.shardIndex, database: database) {
@@ -222,8 +222,8 @@ func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
     }
 
     // POST /v1/hnsw/documents/hubs — hub nodes for given documentIds
-    app.post("v1", "hnsw", "documents", "hubs") { req async throws -> HNSWGraphResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/documents/hubs") { request, context async throws -> HNSWGraphResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let targetIds = Set(body.documentIds ?? [])
         guard let table = database.table, !targetIds.isEmpty else { return emptyGraph }
         return buildGraphResponse(table: table, shardIndexFilter: nil, database: database) {
@@ -232,8 +232,8 @@ func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
     }
 
     // POST /v1/hnsw/nodes/batch — nodes matching a list of partitionIds
-    app.post("v1", "hnsw", "nodes", "batch") { req async throws -> HNSWNodeBatchResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/nodes/batch") { request, context async throws -> HNSWNodeBatchResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let targetPartitionIds = Set(body.partitionIds ?? [])
         guard let table = database.table, !targetPartitionIds.isEmpty else {
             return HNSWNodeBatchResponse(nodes: [])
@@ -249,23 +249,23 @@ func registerHNSWRoutes(_ app: RoutesBuilder, _ database: Database) {
     }
 
     // POST /v1/hnsw/node — single-node full-text inspect by partitionId
-    app.post("v1", "hnsw", "node") { req async throws -> HNSWNodeResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.post("/v1/hnsw/node") { request, context async throws -> HNSWNodeResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let pid = body.partitionId ?? ""
         guard let table = database.table else {
-            throw Abort(.notFound, reason: "No HNSW table initialized")
+            throw HTTPError(.notFound, message: "No HNSW table initialized")
         }
         for shard in table.shards {
             guard let idx = shard.partitionLookup[pid], idx < shard.nodes.count else { continue }
             return makeNodeResponse(shard.nodes[idx], inShard: shard, database: database,
                                     fullText: true, allLayerNeighbors: true)
         }
-        throw Abort(.notFound, reason: "Partition \(pid) not found in HNSW graph")
+        throw HTTPError(.notFound, message: "Partition \(pid) not found in HNSW graph")
     }
 
     // DELETE /v1/hnsw/node — soft-delete a node by partitionId
-    app.delete("v1", "hnsw", "node") { req async throws -> HNSWNodeDeleteResponse in
-        let body = try req.content.decode(HNSWRequest.self)
+    app.delete("/v1/hnsw/node") { request, context async throws -> HNSWNodeDeleteResponse in
+        let body = try await request.decode(as: HNSWRequest.self, context: context)
         let ownerId = body.seer.ownerId
         let pid = body.partitionId ?? ""
         var documentId = ""

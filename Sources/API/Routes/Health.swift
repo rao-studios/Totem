@@ -1,13 +1,13 @@
 import Foundation
-import Vapor
+import Hummingbird
 
-struct HealthResponse: Content {
+struct HealthResponse: ResponseCodable {
     let status: String
     let timestamp: String
 }
 
-func registerHealthRoute(_ app: RoutesBuilder) {
-    app.get("health") { req async throws -> HealthResponse in
+func registerHealthRoute(_ app: some RouterMethods<TotemRequestContext>) {
+    app.get("/health") { _, _ async throws -> HealthResponse in
         return HealthResponse(
             status: "healthy",
             timestamp: ISO8601DateFormatter().string(from: Date())

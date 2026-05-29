@@ -1,6 +1,6 @@
-import Vapor
+import Foundation
 
-struct HNSWGraphStats: Content {
+struct HNSWGraphStats: Codable {
     var liveNodes: Int
     var maxLevel: Int
     var isTrained: Bool
@@ -14,12 +14,12 @@ struct HNSWGraphStats: Content {
     }
 }
 
-struct HNSWStatsResponse: Content {
+struct HNSWStatsResponse: Codable {
     var personal: HNSWGraphStats
     var global: HNSWGraphStats
 }
 
-struct HNSWNodeResponse: Content {
+struct HNSWNodeResponse: Codable {
     var partitionId: String
     var document: Database.Document
     var text: String
@@ -35,7 +35,7 @@ struct HNSWNodeResponse: Content {
     }
 }
 
-struct HNSWGraphResponse: Content {
+struct HNSWGraphResponse: Codable {
     var nodes: [HNSWNodeResponse]
     var totalNodes: Int
     var liveNodes: Int
@@ -53,11 +53,11 @@ struct HNSWGraphResponse: Content {
     }
 }
 
-struct HNSWNodeBatchResponse: Content {
+struct HNSWNodeBatchResponse: Codable {
     var nodes: [HNSWNodeResponse]
 }
 
-struct HNSWNodeDeleteResponse: Content {
+struct HNSWNodeDeleteResponse: Codable {
     var removed: Bool
     var documentId: String
 
