@@ -419,13 +419,32 @@ MLX.Memory.clearCache()
 MLX.Memory.cacheLimit = 20 * 1_024 * 1_024
 ```
 
-**SIGSEGV trap — do NOT call `Stream.defaultStream(.gpu).synchronize()` from within `container.perform`:**
+**SIGSEGV trap — do NOT call any `MLX.Memory.*` or `Stream.*` APIs from within `container.perform`:**
 
-This was attempted as a way to force `CommandEncoder::commit()` to fire, which would process the completion handler lambdas that hold `w_dq` and cuDNN workspace references. It causes a SIGSEGV at `cudaGraphLaunch` inside `commit()`.
+Two attempts were made to force cleanup from inside the inference closure:
 
-Root cause: `container.perform` runs on MLX's internal evaluation thread, which is already inside the scheduler's synchronize path. Calling `Stream.synchronize()` from user code re-enters `CommandEncoder::commit()` while the encoder's CUDA graph is in a partially-built or already-launched state. The cached `CudaGraphExec` becomes invalid and the re-launch crashes.
+1. `Stream.defaultStream(.gpu).synchronize()` → SIGSEGV at `cudaGraphLaunch` inside `commit()` (graph already launched, re-launching with stale `CudaGraphExec` from the cache)
+2. `MLX.Memory.clearCache()` and `MLX.Memory.cacheLimit = 0` inside the closure → SIGSEGV at a tiny address (`0x6529`) — classic null-pointer-plus-offset pattern indicating a corrupted object pointer inside the CUDA allocator
 
-`Stream.synchronize()` and `CommandEncoder::synchronize()` are internal MLX APIs, not safe to call from user inference closures. Only call them from outside the `container.perform` / `ModelContainer.perform` scope, and only if the MLX eval/scheduler is idle at that point.
+Root cause in both cases: `container.perform` runs on MLX's evaluation thread. The `CommandEncoder` is actively managing CUDA graph state and the allocator's internal mutex and cache are in mid-use. Any call that re-enters `evalLock`, `mlx_clear_cache`, `mlx_set_cache_limit`, or `CommandEncoder::synchronize()` from that thread context either deadlocks or corrupts internal state.
+
+**The rule**: `container.perform` is a pure inference zone. Call the model, eval, read results, return. Nothing else.
+
+All memory management happens **after `container.perform` returns**, when the CUDA context is idle:
+
+```swift
+let result = await container.perform { model, tokenizer in
+    // inference only — no MLX.Memory.* here
+    return (allData, usage)
+}
+
+// Safe: CUDA context is idle, allocator is not locked
+MLX.Memory.cacheLimit = 0
+MLX.Memory.clearCache()
+MLX.Memory.cacheLimit = 20 * 1_024 * 1_024
+
+return result
+```
 
 **When re-applying upstream:** If upstream changes the eval path so that completion handlers are processed synchronously during `eval()`, the `cacheLimit = 0` flush becomes redundant (safe to keep, just wastes one round-trip). Keep `maxTokensPerSequence` regardless — it provides a hard bound on attention memory independent of temporary lifecycle.
 
@@ -488,5 +507,6 @@ When `ml-explore/mlx` or `ml-explore/mlx-swift` cut a new release, the process i
 | `cublasLtMatmulAlgoGetHeuristic` code 7 | b_rows/b_cols passed as physical not logical | Verify `119de463` is in mlx gab/cuda1 |
 | `Cache thrashing is happening` fatal error | SDPA cache too small for varying seq lengths | Verify `4d864085` in mlx gab/cuda1; rebuild |
 | GPU OOM on large documents | Batch too large, sequences too long, or missing end-of-document cache flush | `maxInputsPerBatch=8`, `maxTokensPerSequence=512`, `cacheLimit=0`+`clearCache()` after all sub-batches |
-| SIGSEGV in `cudaGraphLaunch` inside `commit()` | Called `Stream.defaultStream(.gpu).synchronize()` from within `container.perform` — re-enters encoder while graph is mid-launch | Remove that call; only flush at document boundary via `cacheLimit=0`+`clearCache()` |
+| SIGSEGV in `cudaGraphLaunch` inside `commit()` | Called `Stream.synchronize()` from within `container.perform` — re-enters encoder while graph is mid-launch | Remove all `Stream.*` and `MLX.Memory.*` calls from inside `container.perform` |
+| SIGSEGV at tiny address (`0x6529`) in CommandEncoder | Called `MLX.Memory.clearCache()` or `cacheLimit = 0` from inside `container.perform` — corrupts CUDA allocator internal state | Same: move ALL memory management to after `container.perform` returns |
 | Model loaded twice / double-load race | Actor nil-check race at await | Verify `loadingTask` pattern in `MLXEmbeddingModelProvider` |

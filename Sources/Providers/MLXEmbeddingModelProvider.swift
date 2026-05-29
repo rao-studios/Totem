@@ -39,7 +39,12 @@ actor MLXEmbeddingModelProvider: EmbeddingProviding {
     ) async throws -> (result: [EmbeddingData], usage: Requests.Embedding.Get.Result.Usage) {
         let container = try await loadedModel(logger: logger)
 
-        return await container.perform { model, tokenizer in
+        // container.perform runs on MLX's evaluation thread. Do NOT call any
+        // MLX.Memory.* or Stream.* APIs from inside this closure — they
+        // re-enter the CUDA allocator or CommandEncoder while it is still
+        // active and cause SIGSEGV (null-pointer-offset crashes at tiny
+        // addresses like 0x6529). All cleanup is done after the closure returns.
+        let result = await container.perform { model, tokenizer in
             var allData: [EmbeddingData] = []
             var promptTokens = 0
             var index = 0
@@ -65,9 +70,9 @@ actor MLXEmbeddingModelProvider: EmbeddingProviding {
                 }
                 guard !paddedArrays.isEmpty else { continue }
 
-                let padded          = MLX.stacked(paddedArrays)
-                let attentionMask   = padded .!= MLXArray(padId)
-                let tokenTypeIds    = MLXArray.zeros(like: padded)
+                let padded        = MLX.stacked(paddedArrays)
+                let attentionMask = padded .!= MLXArray(padId)
+                let tokenTypeIds  = MLXArray.zeros(like: padded)
 
                 let output     = model(padded, positionIds: nil, tokenTypeIds: tokenTypeIds, attentionMask: attentionMask)
                 let embeddings = output.textEmbeds
@@ -77,16 +82,7 @@ actor MLXEmbeddingModelProvider: EmbeddingProviding {
                     allData.append(EmbeddingData(embedding: .floats(embeddings[i].asArray(Float.self)), index: index))
                     index += 1
                 }
-
-                MLX.Memory.clearCache()
             }
-
-            // Aggressively return GPU memory at document boundaries.
-            // Temporarily drop cacheLimit to zero so clearCache releases
-            // everything rather than holding the 20 MB reserve.
-            MLX.Memory.cacheLimit = 0
-            MLX.Memory.clearCache()
-            MLX.Memory.cacheLimit = 20 * 1_024 * 1_024
 
             let usage = Requests.Embedding.Get.Result.Usage(
                 promptAudioSeconds: nil,
@@ -98,6 +94,15 @@ actor MLXEmbeddingModelProvider: EmbeddingProviding {
             )
             return (allData, usage)
         }
+
+        // CUDA context is idle here — safe to touch the allocator.
+        // Drop cache to zero, flush everything, then restore the 20 MB reserve
+        // so the next request starts with a clean pool.
+        MLX.Memory.cacheLimit = 0
+        MLX.Memory.clearCache()
+        MLX.Memory.cacheLimit = 20 * 1_024 * 1_024
+
+        return result
     }
 
     func acquirePreprocessSlot() async {
