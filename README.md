@@ -16,45 +16,85 @@ Totem owns no user sessions and no authentication — that is Seer's responsibil
 
 ## Prerequisites
 
-- Swift 6.0+ / Xcode 15+
+### macOS (Apple Silicon)
+
+- Xcode 16 / Swift 6.3+
 - macOS 15+
-- A [Mistral API key](https://console.mistral.ai/) or Apple Silicon
+- A [Mistral API key](https://console.mistral.ai/) (for Mistral embeddings) **or** Apple Silicon (for on-device MLX)
+
+### Linux (Ubuntu 24.04 + NVIDIA GPU)
+
+- Ubuntu 24.04 LTS (Noble)
+- NVIDIA GPU — RTX 3080 / 3090 / 4080 / 4090 / A100 / H100
+- Internet access for the one-time setup
+
+---
 
 ## Setup
 
-```bash
-export MISTRAL_API_KEY="your-key-here"
-```
-
-### MLX (on-device)
-
-No API key needed. Download the model from the Hub before starting the server:
+### macOS
 
 ```bash
-pip install huggingface_hub
-hf auth login
-hf download mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
+# Mistral embeddings (requires API key)
+cp .env.example .env
+# Edit .env and set MISTRAL_API_KEY
+
+# On-device MLX (no key needed — downloads ~500 MB model once)
+pip3 install huggingface_hub
+python3 -m huggingface_hub download mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
 ```
 
-The model is cached in `~/.cache/huggingface/hub/` and loaded on first request when `--use-mlx` is set.
-
-**Apple Silicon** — standard `swift build -c release` picks up MLX automatically.
-
-**Linux / NVIDIA GPU** — requires CUDA 12.x, the cuDNN Frontend headers, and LAPACK. Build with:
+Build and run:
 
 ```bash
-export PATH=/usr/local/cuda/bin:${PATH}
-export LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}
-export CUDA_ARCH=sm_86   # match your GPU compute capability
-SPM_CUDA=1 swift build -c release --jobs 2
+swift build -c release
+.build/release/totem --host 127.0.0.1 --port 8080 --use-mlx
 ```
 
-The package is pinned to `riteshpakala/mlx-swift:gab/cuda1` which carries patches for CUDA 12.9 + GCC 13 half-precision math ambiguity, CUTLASS-free builds, and cuDNN Frontend include paths. See [Docs/MLX-CUDA-Linux.md](Docs/MLX-CUDA-Linux.md) for the full setup guide, dependency list, and patch notes.
+### Linux / Ubuntu 24.04 (NVIDIA GPU)
+
+**One-time machine setup** — installs Swift 6.3.2, CUDA 12.9, LAPACK, and the cuDNN Frontend headers:
+
+```bash
+chmod +x setup-cuda-ubuntu.sh
+./setup-cuda-ubuntu.sh
+```
+
+After the script finishes, open a new terminal (or `source ~/.bashrc`) so the CUDA and Swift paths are live.
+
+**Download the embedding model** (one-time, ~500 MB):
+
+```bash
+python3 -m huggingface_hub download mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
+```
+
+**Build:**
+
+```bash
+chmod +x build-linux-cuda.sh
+./build-linux-cuda.sh           # debug CUDA build (default)
+./build-linux-cuda.sh --debug   # explicit debug
+```
+
+> `CUDA_ARCH` defaults to `sm_86` (RTX 30xx / A100). Override for other GPUs:
+> ```bash
+> CUDA_ARCH=sm_89 ./build-linux-cuda.sh   # RTX 40xx
+> CUDA_ARCH=sm_90 ./build-linux-cuda.sh   # H100
+> ```
+
+**Run:**
+
+```bash
+.build/debug/totem --host 127.0.0.1 --port 8080 --use-mlx
+```
+
+The package is pinned to `riteshpakala/mlx-swift:gab/cuda1` which carries patches for CUDA 12.9 + GCC 13 half-precision math, CUTLASS-free sm_86 builds, SDPA cache sizing, and a GPU-only affine quantized matmul fallback. See [Docs/MLX-CUDA-Linux.md](Docs/MLX-CUDA-Linux.md) for the full patch log, fork commit hashes, and troubleshooting reference.
 
 ## Build & Run
 
+**macOS**
+
 ```bash
-cd /path/to/Totem
 swift build -c release
 
 # Standalone — HTTP only, no Seer required
@@ -71,11 +111,21 @@ swift build -c release
   --mothership-grpc-port 50051
 ```
 
-Or during development:
+**Linux / Ubuntu 24.04**
 
 ```bash
-swift run totem --host 127.0.0.1 --port 8080
-swift run totem --host 127.0.0.1 --port 8080 --use-mlx
+./build-linux-cuda.sh
+
+# Standalone with on-device GPU embeddings
+.build/debug/totem --host 127.0.0.1 --port 8080 --use-mlx
+
+# Distributed
+.build/debug/totem \
+  --host 127.0.0.1 --port 8080 \
+  --grpc-port 9090 \
+  --mothership-host 127.0.0.1 \
+  --mothership-grpc-port 50051 \
+  --use-mlx
 ```
 
 Check health:

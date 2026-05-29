@@ -13,7 +13,9 @@ actor MLXEmbeddingModelProvider: EmbeddingProviding {
     private var loadedContainer: ModelContainer?
     private var loadingTask: Task<ModelContainer, Error>?
 
-    static let maxInputsPerBatch = 256
+    static let maxInputsPerBatch = 8
+    // Limits attention matrix size: O(seq²). 512 → 4× less memory than 1024.
+    static let maxTokensPerSequence = 512
 
     // MARK: - Preprocessing slots (mirrors EmbeddingModelProvider)
 
@@ -22,6 +24,9 @@ actor MLXEmbeddingModelProvider: EmbeddingProviding {
     private var preprocessWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(modelId: String = "mlx-community/snowflake-arctic-embed-m-v1.5") {
+        // Enlarge the SDPA kernel cache so varying sequence lengths across
+        // sub-batches don't thrash the 256-slot default and trigger a fatal error.
+        setenv("MLX_CUDA_SDPA_CACHE_SIZE", "2048", 0)
         self.modelId = modelId
     }
 
@@ -43,10 +48,16 @@ actor MLXEmbeddingModelProvider: EmbeddingProviding {
                 let batchEnd = min(batchStart + Self.maxInputsPerBatch, texts.count)
                 let batch = Array(texts[batchStart..<batchEnd])
 
-                let tokenized = batch.map { tokenizer.encode(text: $0, addSpecialTokens: true) }
+                let tokenized = batch.map {
+                    Array(tokenizer.encode(text: $0, addSpecialTokens: true).prefix(Self.maxTokensPerSequence))
+                }
                 promptTokens += tokenized.reduce(0) { $0 + $1.count }
 
-                let maxLen = tokenized.map { $0.count }.max() ?? 16
+                let rawMax = tokenized.map { $0.count }.max() ?? 16
+                // Round up to power-of-2 so SDPA sees a small set of distinct shapes,
+                // reducing cache thrash on MLX_CUDA_SDPA_CACHE_SIZE.
+                var maxLen = 1
+                while maxLen < rawMax { maxLen <<= 1 }
                 let padId  = tokenizer.eosTokenId ?? 0
 
                 let paddedArrays = tokenized.map { tokens in
@@ -60,12 +71,22 @@ actor MLXEmbeddingModelProvider: EmbeddingProviding {
 
                 let output     = model(padded, positionIds: nil, tokenTypeIds: tokenTypeIds, attentionMask: attentionMask)
                 let embeddings = output.textEmbeds
+                MLX.eval(embeddings)
 
                 for i in 0..<embeddings.shape[0] {
                     allData.append(EmbeddingData(embedding: .floats(embeddings[i].asArray(Float.self)), index: index))
                     index += 1
                 }
+
+                MLX.Memory.clearCache()
             }
+
+            // Aggressively return GPU memory at document boundaries.
+            // Temporarily drop cacheLimit to zero so clearCache releases
+            // everything rather than holding the 20 MB reserve.
+            MLX.Memory.cacheLimit = 0
+            MLX.Memory.clearCache()
+            MLX.Memory.cacheLimit = 20 * 1_024 * 1_024
 
             let usage = Requests.Embedding.Get.Result.Usage(
                 promptAudioSeconds: nil,

@@ -26,7 +26,7 @@ done
 if [[ $CUDA_ENABLED -eq 1 ]]; then
     if [[ ! -d /usr/local/cuda ]]; then
         echo "ERROR: CUDA toolkit not found at /usr/local/cuda"
-        echo "Install with: sudo apt-get install cuda-toolkit-12-9 libcudnn9-dev-cuda-12"
+        echo "Run ./setup-cuda-ubuntu.sh to install all dependencies."
         exit 1
     fi
     export PATH=/usr/local/cuda/bin:${PATH}
